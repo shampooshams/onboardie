@@ -110,7 +110,7 @@
   /* Numbered steps */
   .steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
 
-  .steps li {
+  .steps > li {
     counter-increment: step;
     display: flex;
     gap: 18px;
@@ -118,9 +118,9 @@
     border-top: 1px solid var(--line);
   }
 
-  .steps li:last-child { border-bottom: 1px solid var(--line); }
+  .steps > li:last-child { border-bottom: 1px solid var(--line); }
 
-  .steps li::before {
+  .steps > li::before {
     content: counter(step);
     flex: 0 0 32px;
     height: 32px;
@@ -136,6 +136,32 @@
 
   .step-body p { margin: 4px 0 0; color: var(--muted); font-size: 15px; }
   .step-body h4 { margin: 0; font-size: 16px; font-weight: 600; }
+
+  .q-list {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+  }
+
+  .q-list li {
+    position: relative;
+    padding-left: 16px;
+    margin: 6px 0;
+    font-size: 15px;
+    color: var(--muted);
+    border: none;
+  }
+
+  .q-list li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 9px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--green);
+  }
 
   /* Role toggle */
   .toggle {
@@ -454,6 +480,74 @@
       <li><b>The new-hire progress table shows sample data.</b> On the Manager Dashboard, that table is currently seeded with demo hires rather than your real ones. Live data is coming in a future update.</li>
       <li><b>Your content stays private to your workspace.</b> Whatever you upload or publish is visible only to people using the same email domain as you.</li>
     </ul>
+  </section>
+
+  <section>
+    <h2>Share your feedback</h2>
+    <p class="section-lede">A few questions to help us understand what is working and what still needs work. Feel free to answer as many as apply to your role.</p>
+
+    <ol class="steps">
+      <li>
+        <div class="step-body">
+          <h4>First impressions</h4>
+          <ul class="q-list">
+            <li>Overall, how easy was it to understand what to do? (1–5 scale)</li>
+            <li>Did anything feel confusing or unclear? Where exactly?</li>
+          </ul>
+        </div>
+      </li>
+      <li>
+        <div class="step-body">
+          <h4>Real-world value</h4>
+          <ul class="q-list">
+            <li>Thinking about your actual day-to-day work, do you think this would genuinely save you time or make things easier? In what way?</li>
+          </ul>
+        </div>
+      </li>
+      <li>
+        <div class="step-body">
+          <h4>Adoption intent</h4>
+          <ul class="q-list">
+            <li>If this were available to you starting tomorrow, would you actually use it in your daily work? Why or why not, and what would need to change for the answer to be a stronger yes?</li>
+          </ul>
+        </div>
+      </li>
+      <li>
+        <div class="step-body">
+          <h4>Role-specific: New Hire</h4>
+          <ul class="q-list">
+            <li>Did the AI Coach's answers feel accurate and trustworthy?</li>
+            <li>Was it clear what you were supposed to do each week in the Learning Plan?</li>
+          </ul>
+        </div>
+      </li>
+      <li>
+        <div class="step-body">
+          <h4>Role-specific: Manager</h4>
+          <ul class="q-list">
+            <li>Did the AI-structured content match what you expected once you uploaded the mock-up role?</li>
+            <li>Would you actually use the "most common questions" insight to improve your content?</li>
+          </ul>
+        </div>
+      </li>
+      <li>
+        <div class="step-body">
+          <h4>Friction and bugs</h4>
+          <ul class="q-list">
+            <li>Did anything break or behave unexpectedly? Please describe what happened.</li>
+          </ul>
+        </div>
+      </li>
+      <li>
+        <div class="step-body">
+          <h4>Closing</h4>
+          <ul class="q-list">
+            <li>On a scale of 1–10, how likely are you to recommend this to another manager or new hire?</li>
+            <li>Anything else you want to tell us?</li>
+          </ul>
+        </div>
+      </li>
+    </ol>
   </section>
 
   <div class="footer-box">
