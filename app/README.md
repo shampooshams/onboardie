@@ -2,7 +2,7 @@
 
 AI onboarding coach for new hires at German Mittelstand companies: a **New Hire** portal (dashboard, AI coach, learning plan, resources, contacts) and a **Manager** portal (upload, review & approve, manage content, insights).
 
-This site also serves the **Prototype Testing Guide** at [`/testing-guide/`](public/testing-guide/index.html).
+This folder holds the app only. The Prototype Testing Guide at the repository root is a separate static site (https://testingonboardie.netlify.app/) and is deployed separately.
 
 Stack: TanStack Start (React 19, Vite, SSR), Tailwind CSS v4 + shadcn/ui, Supabase (Postgres, Auth, RLS), any OpenAI-compatible AI API, optional Notion. Architecture details are in [REBUILD-BRIEFING.md](REBUILD-BRIEFING.md).
 
@@ -18,7 +18,7 @@ You need Node.js 22+, a Supabase project, and an API key from an AI provider.
    npx supabase link --project-ref YOUR-PROJECT-REF
    npx supabase db push
    ```
-3. Go to **Authentication → URL Configuration**. Set **Site URL** to your live URL (e.g. `https://onboardie.netlify.app`). Add `http://localhost:8080/**` and `https://YOUR-SITE/**` to **Redirect URLs**.
+3. Go to **Authentication → URL Configuration**. Set **Site URL** to your live URL (the address your host gives the app). Add `http://localhost:8080/**` and `https://YOUR-SITE/**` to **Redirect URLs**.
 4. Copy the URL, publishable (anon) key and secret (service role) key from **Project Settings → API**.
 
 ### 2. Environment variables
@@ -39,13 +39,17 @@ npm install
 npm run dev        # http://localhost:8080
 ```
 
-## Deploy to Netlify
+## Deploy
 
-1. In Netlify, choose **Add new site → Import an existing project** and pick this repository. `netlify.toml` already sets the build command (`npm run build`) and the publish folder (`dist`).
-2. Add the environment variables from step 2 under **Site configuration → Environment variables**. The `VITE_` values are baked in at build time, so trigger a new deploy after changing them.
-3. Deploy. The app is served from `/` and the testing guide from `/testing-guide/`.
+The app lives in the `app/` folder of this repository. On any host, set the project's **base / root directory to `app`**. This keeps it separate from the testing guide at the repository root.
 
-**Other hosts.** The server is built with [Nitro](https://nitro.build), which detects Netlify, Vercel and Cloudflare on its own. For a VM or Docker, run `NITRO_PRESET=node-server npm run build` and then `npm start` (listens on `PORT`, default 3000).
+The server is built with [Nitro](https://nitro.build), which detects Netlify, Vercel and Cloudflare during their builds.
+
+- **Netlify:** set **Base directory** to `app`. `app/netlify.toml` sets the build command (`npm run build`) and the publish folder (`dist`).
+- **Vercel:** set **Root Directory** to `app` and keep the defaults.
+- **Render, Railway, Fly.io, Docker or a VM:** build with `NITRO_PRESET=node-server npm run build` and start with `npm start`. The server listens on `PORT` (default 3000).
+
+On every host, add the environment variables from step 2. The `VITE_` values are baked in at build time, so redeploy after changing them. Then set Supabase's Site URL to the new address.
 
 ## Moving data from Lovable Cloud
 
