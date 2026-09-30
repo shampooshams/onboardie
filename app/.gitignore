@@ -38,3 +38,6 @@ dist-ssr
 
 # Netlify
 .netlify
+
+# Vercel
+.vercel

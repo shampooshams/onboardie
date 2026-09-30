@@ -3,7 +3,7 @@
 AI onboarding coach for new hires at German Mittelstand companies. Two portals (New Hire, Manager), company-isolated content, AI coach grounded strictly in manager-published content.
 
 ## Stack
-- TanStack Start v1 (React 19, Vite 7, SSR, server functions via `createServerFn`), built with Nitro and deployed to Netlify (any Nitro preset works).
+- TanStack Start v1 (React 19, Vite 7, SSR, server functions via `createServerFn`), built with Nitro and deployed to Vercel (any Nitro preset works).
 - Tailwind CSS v4 (`src/styles.css` tokens), shadcn/ui components (`src/components/ui`).
 - Supabase (Postgres + Auth + RLS). Email/password auth only.
 - AI: any OpenAI-compatible Chat Completions API (`src/lib/ai-gateway.server.ts`), configured with `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`. Failures are logged to `ai_failure_log`.

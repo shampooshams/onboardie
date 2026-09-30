@@ -45,8 +45,8 @@ The app lives in the `app/` folder of this repository. On any host, set the proj
 
 The server is built with [Nitro](https://nitro.build), which detects Netlify, Vercel and Cloudflare during their builds.
 
-- **Netlify:** set **Base directory** to `app`. `app/netlify.toml` sets the build command (`npm run build`) and the publish folder (`dist`).
-- **Vercel:** set **Root Directory** to `app` and keep the defaults.
+- **Vercel (recommended):** set **Root Directory** to `app` and keep the other defaults. `vite.config.ts` already pins the server to Frankfurt (`fra1`) and allows AI requests up to 120 seconds.
+- **Netlify:** set **Base directory** to `app`, build command `npm run build`, publish directory `dist`. Note that Netlify cuts server requests off after about 10 seconds, which long AI requests can exceed.
 - **Render, Railway, Fly.io, Docker or a VM:** build with `NITRO_PRESET=node-server npm run build` and start with `npm start`. The server listens on `PORT` (default 3000).
 
 On every host, add the environment variables from step 2. The `VITE_` values are baked in at build time, so redeploy after changing them. Then set Supabase's Site URL to the new address.

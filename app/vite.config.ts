@@ -17,7 +17,11 @@ export default defineConfig({
       // Use src/server.ts (our SSR error wrapper) as the server entry.
       server: { entry: "server" },
     }),
-    nitro(),
+    nitro({
+      // Only used on Vercel: run next to the Supabase project in Frankfurt, and give
+      // slow AI calls (e.g. structuring a long document) up to two minutes.
+      vercel: { functions: { regions: ["fra1"], maxDuration: 120 } },
+    }),
     viteReact(),
   ],
 });
