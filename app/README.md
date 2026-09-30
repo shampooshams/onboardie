@@ -13,7 +13,7 @@ You need Node.js 22+, a Supabase project, and an API key from an AI provider.
 ### 1. Supabase
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Apply the database schema. Either run the files in `supabase/migrations/` **in filename order** in the SQL Editor, or use the CLI:
+2. Apply the database schema. The easiest way is to open **SQL Editor**, paste the whole of [`supabase/setup.sql`](supabase/setup.sql) and click **Run**. That file combines all migrations in one transaction, so a failure leaves nothing half-applied. Or use the CLI:
    ```sh
    npx supabase link --project-ref YOUR-PROJECT-REF
    npx supabase db push
@@ -45,7 +45,7 @@ The app lives in the `app/` folder of this repository. On any host, set the proj
 
 The server is built with [Nitro](https://nitro.build), which detects Netlify, Vercel and Cloudflare during their builds.
 
-- **Vercel (recommended):** set **Root Directory** to `app` and keep the other defaults. `vite.config.ts` already pins the server to Frankfurt (`fra1`) and allows AI requests up to 120 seconds.
+- **Vercel (recommended):** set **Root Directory** to `app` and keep the other defaults. `vite.config.ts` already pins the server to Ireland (`dub1`), next to the Supabase project in `eu-west-1`. It also allows AI requests up to 120 seconds. If your Supabase project is in another region, change `regions` there to the [matching Vercel region](https://vercel.com/docs/regions).
 - **Netlify:** set **Base directory** to `app`, build command `npm run build`, publish directory `dist`. Note that Netlify cuts server requests off after about 10 seconds, which long AI requests can exceed.
 - **Render, Railway, Fly.io, Docker or a VM:** build with `NITRO_PRESET=node-server npm run build` and start with `npm start`. The server listens on `PORT` (default 3000).
 
