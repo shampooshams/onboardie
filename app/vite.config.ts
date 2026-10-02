@@ -18,9 +18,9 @@ export default defineConfig({
       server: { entry: "server" },
     }),
     nitro({
-      // Only used on Vercel: run next to the Supabase project in Frankfurt, and give
+      // Only used on Vercel: run next to the Supabase project in Ireland (eu-west-1), and give
       // slow AI calls (e.g. structuring a long document) up to two minutes.
-      vercel: { functions: { regions: ["fra1"], maxDuration: 120 } },
+      vercel: { functions: { regions: ["dub1"], maxDuration: 120 } },
     }),
     viteReact(),
   ],
