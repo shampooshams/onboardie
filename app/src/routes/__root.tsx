@@ -38,6 +38,27 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
   console.error(error);
   const router = useRouter();
 
+  // A deployment without its Supabase settings fails on every page; say which
+  // settings are missing so whoever deploys it can fix it without digging into logs.
+  const message = error instanceof Error ? error.message : "";
+  if (message.startsWith("Missing Supabase environment variable")) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="max-w-md text-center">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+            Setup incomplete
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">{message}</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Add them to the hosting provider's environment variables (for the Production
+            environment), then redeploy. They are read when the site is built, so saving them
+            alone is not enough.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
