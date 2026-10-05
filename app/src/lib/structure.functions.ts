@@ -151,7 +151,7 @@ export const structureContent = createServerFn({ method: "POST" })
         ],
       });
 
-      if (!result.ok) return { ok: false, message: aiFailureMessage(result.reason, data.lang) };
+      if (!result.ok) return { ok: false, message: aiFailureMessage(result.reason, data.lang, result.hint) };
 
       const parsed = parseTolerant(result.text);
       if (!parsed) {
