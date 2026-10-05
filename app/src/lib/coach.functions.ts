@@ -245,7 +245,7 @@ export const askCoach = createServerFn({ method: "POST" })
       ],
     });
 
-    if (!result.ok) return { ok: false, message: aiFailureMessage(result.reason, data.lang) };
+    if (!result.ok) return { ok: false, message: aiFailureMessage(result.reason, data.lang, result.hint) };
 
     // Manager-only insight: bucket the question by topic. Never surfaced to the new hire.
     // Preview questions are the manager's own, so they are not logged as hire questions.

@@ -429,4 +429,6 @@ export const de: Record<MessageKey, string> = {
   "manage.mockupsHint":
     "Beispielinhalte von Onboardie, für alle Konten sichtbar, damit Sie sehen, wie eine fertige Rolle aussieht. Öffnen Sie eine als Ausgangspunkt – beim Speichern entsteht eine Kopie in Ihrem Unternehmen, das Beispiel bleibt unverändert.",
   "manage.view": "Ansehen",
+  // AI setup details
+  "ai.detail": "Technische Details für Ihre Administration: {detail}",
 };

@@ -18,7 +18,7 @@ export type AiFailureReason =
 
 export type AiCallResult =
   | { ok: true; text: string }
-  | { ok: false; reason: AiFailureReason; status?: number; detail?: string };
+  | { ok: false; reason: AiFailureReason; status?: number; detail?: string; hint?: string };
 
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const MAX_ATTEMPTS = 3;
@@ -37,7 +37,10 @@ type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
 function classify(status: number, body: string): AiFailureReason {
   if (status === 401) return "auth";
-  if (status === 404 && /model/i.test(body)) return "config";
+  // Gemini answers a bad or missing key with 400 instead of 401.
+  if (status === 400 && /api key|authorization header/i.test(body)) return "auth";
+  // Either the model name or AI_BASE_URL is wrong; setupHint says which.
+  if (status === 404) return "config";
   if (status === 402 || status === 403) return "credits";
   if (status === 429) return "busy";
   if (status >= 500) return "busy";
@@ -46,6 +49,49 @@ function classify(status: number, body: string): AiFailureReason {
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** The provider's own error text, e.g. "Invalid Anthropic API Key". Never contains the key. */
+function providerMessage(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    const first = (Array.isArray(parsed) ? parsed[0] : parsed) as {
+      error?: { message?: unknown } | string;
+      message?: unknown;
+    };
+    const message =
+      typeof first?.error === "string"
+        ? first.error
+        : (first?.error?.message ?? first?.message);
+    return typeof message === "string" ? message.slice(0, 160) : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Says which setting to fix for a configuration failure, naming environment
+ * variables and the provider host only — never the key itself. Shown to the
+ * user so whoever runs the deployment can fix it without reading logs.
+ */
+function setupHint(reason: AiFailureReason, status: number | undefined, body: string): string | undefined {
+  const { endpoint, model } = aiConfig();
+  const host = new URL(endpoint).host;
+  const baseUnset = !process.env.AI_BASE_URL;
+  const fromProvider = providerMessage(body);
+  const said = fromProvider ? ` Provider said: "${fromProvider}"` : "";
+  if (baseUnset && reason !== "busy") {
+    return `AI_BASE_URL is not set, so requests go to OpenAI (${host}), which refused them (HTTP ${status}). If your key is from another provider, set AI_BASE_URL to its address and redeploy.${said}`;
+  }
+  if (reason === "auth") {
+    return `${host} rejected AI_API_KEY (HTTP ${status}). Check that the key belongs to this provider and has no extra spaces, then redeploy.${said}`;
+  }
+  if (reason === "config" && status === 404) {
+    return /model/i.test(body)
+      ? `${host} has no model called "${model}". Check AI_MODEL, then redeploy.${said}`
+      : `Nothing was found at ${endpoint}. Check AI_BASE_URL (it should end before /chat/completions), then redeploy.`;
+  }
+  return undefined;
+}
 
 /**
  * Records a failure for later diagnosis. Never throws — diagnostics must never
@@ -89,16 +135,24 @@ export async function callChatCompletion(options: {
 }): Promise<AiCallResult> {
   const { endpoint, apiKey, model } = aiConfig();
   if (!apiKey || !model) {
+    const missing = [
+      ...(!apiKey ? ["AI_API_KEY"] : []),
+      ...(!model ? ["AI_MODEL"] : []),
+      ...(!process.env.AI_BASE_URL ? ["AI_BASE_URL"] : []),
+    ];
+    const hint = `${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} not set on the server. Add ${missing.length === 1 ? "it" : "them"} to the hosting provider's environment variables (Production) and redeploy.`;
     await recordAiFailure({
       feature: options.feature,
       reason: "config",
-      detail: `${!apiKey ? "AI_API_KEY" : "AI_MODEL"} is not available in the running server`,
+      detail: hint,
       contentLength: options.contentLength,
     });
-    return { ok: false, reason: "config" };
+    return { ok: false, reason: "config", hint };
   }
 
-  let last: { reason: AiFailureReason; status?: number; detail?: string } = { reason: "unknown" };
+  let last: { reason: AiFailureReason; status?: number; detail?: string; hint?: string } = {
+    reason: "unknown",
+  };
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
@@ -121,7 +175,12 @@ export async function callChatCompletion(options: {
       if (!response.ok) {
         const body = await response.text();
         const reason = classify(response.status, body);
-        last = { reason, status: response.status, detail: body.slice(0, 1000) };
+        last = {
+          reason,
+          status: response.status,
+          detail: body.slice(0, 1000),
+          hint: setupHint(reason, response.status, body),
+        };
 
         if (reason === "busy" && attempt < MAX_ATTEMPTS) {
           const retryAfter = Number(response.headers.get("Retry-After"));
@@ -161,14 +220,29 @@ export async function callChatCompletion(options: {
     feature: options.feature,
     reason: last.reason,
     status: last.status,
-    detail: last.detail,
+    detail: last.hint ? `${last.hint} | ${last.detail ?? ""}` : last.detail,
     contentLength: options.contentLength,
   });
-  return { ok: false, reason: last.reason, status: last.status, detail: last.detail };
+  return {
+    ok: false,
+    reason: last.reason,
+    status: last.status,
+    detail: last.detail,
+    hint: last.hint,
+  };
 }
 
-/** Plain-language message for a failure cause, safe to show a user, in their language. */
-export function aiFailureMessage(reason: AiFailureReason, lang: Lang = "en"): string {
+/**
+ * Plain-language message for a failure, in the user's language. Setup failures
+ * also carry the technical hint (which setting to fix), which stays in English
+ * because it names environment variables.
+ */
+export function aiFailureMessage(reason: AiFailureReason, lang: Lang = "en", hint?: string): string {
+  const message = baseFailureMessage(reason, lang);
+  return hint ? `${message} ${translate(lang, "ai.detail", { detail: hint })}` : message;
+}
+
+function baseFailureMessage(reason: AiFailureReason, lang: Lang): string {
   switch (reason) {
     case "busy":
       return translate(lang, "ai.busy");

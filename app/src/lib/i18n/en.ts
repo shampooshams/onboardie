@@ -400,6 +400,8 @@ export const en = {
   "manage.mockupsHint":
     "Example content from Onboardie, shared with every account so you can see how a finished role looks. Open one to use it as a starting point — saving keeps a copy under your own company and never changes the example.",
   "manage.view": "View",
+  // AI setup details
+  "ai.detail": "Technical detail for your admin: {detail}",
 } as const;
 
 export type MessageKey = keyof typeof en;
