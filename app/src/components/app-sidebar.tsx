@@ -19,22 +19,24 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile, initialsOf } from "@/lib/profile";
 import markUrl from "@/assets/onboardie-mark.png";
+import { LANG_STORAGE_KEY, useT, type MessageKey } from "@/lib/i18n";
+import { LanguageSwitch } from "./language-switch";
 
 const newHireNav = [
-  { to: "/", label: "Your Onboarding Dashboard", icon: LayoutDashboard },
-  { to: "/ai-coach", label: "Chat with Your AI Coach", icon: Sparkles },
-  { to: "/learning-plan", label: "Learning Plan", icon: BookOpen },
-  { to: "/resources", label: "Resources and Tools", icon: Wrench },
-  { to: "/contacts", label: "Who to Contact", icon: Users },
-  { to: "/role-overview", label: "Role Overview & Q&A", icon: HelpCircle },
-  { to: "/settings", label: "Settings", icon: Settings },
+  { to: "/", label: "nav.dashboard", icon: LayoutDashboard },
+  { to: "/ai-coach", label: "nav.coach", icon: Sparkles },
+  { to: "/learning-plan", label: "nav.plan", icon: BookOpen },
+  { to: "/resources", label: "nav.resources", icon: Wrench },
+  { to: "/contacts", label: "nav.contacts", icon: Users },
+  { to: "/role-overview", label: "nav.roleOverview", icon: HelpCircle },
+  { to: "/settings", label: "nav.settings", icon: Settings },
 ] as const;
 
 const managerNav = [
-  { to: "/manager", label: "Manager Dashboard", icon: Briefcase },
-  { to: "/upload-content", label: "Upload Role Content", icon: Upload },
-  { to: "/review-approve", label: "Review & Approve", icon: CheckCircle2 },
-  { to: "/manage-content", label: "Manage Content", icon: FolderOpen },
+  { to: "/manager", label: "nav.manager", icon: Briefcase },
+  { to: "/upload-content", label: "nav.upload", icon: Upload },
+  { to: "/review-approve", label: "nav.review", icon: CheckCircle2 },
+  { to: "/manage-content", label: "nav.manage", icon: FolderOpen },
 ] as const;
 
 const managerPaths = managerNav.map((i) => i.to as string);
@@ -43,11 +45,12 @@ export function AppSidebar() {
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   const { profile } = useProfile();
   const [signingOut, setSigningOut] = useState(false);
+  const { t } = useT();
 
   // The current route decides the portal, so toggling navigates instantly.
   const isManager = managerPaths.includes(pathname);
   const items = isManager ? managerNav : newHireNav;
-  const name = profile?.full_name?.trim() || profile?.email || "Your account";
+  const name = profile?.full_name?.trim() || profile?.email || t("nav.yourAccount");
 
   async function handleLogout() {
     setSigningOut(true);
@@ -57,7 +60,10 @@ export function AppSidebar() {
       console.error("Sign out failed", err);
     }
     try {
+      // Clear session data but keep the chosen language for the next login.
+      const lang = window.localStorage.getItem(LANG_STORAGE_KEY);
       window.localStorage.clear();
+      if (lang) window.localStorage.setItem(LANG_STORAGE_KEY, lang);
       window.sessionStorage.clear();
     } catch {
       /* storage may be unavailable */
@@ -71,7 +77,7 @@ export function AppSidebar() {
     icon: Icon,
   }: {
     to: string;
-    label: string;
+    label: MessageKey;
     icon: typeof LayoutDashboard;
   }) => {
     const active = pathname === to;
@@ -89,7 +95,7 @@ export function AppSidebar() {
         }
       >
         <Icon className="h-4 w-4 shrink-0" />
-        <span>{label}</span>
+        <span>{t(label)}</span>
       </Link>
     );
   };
@@ -117,7 +123,7 @@ export function AppSidebar() {
                 : "text-sidebar-foreground/60 hover:text-sidebar-foreground")
             }
           >
-            New Hire View
+            {t("nav.newHireView")}
           </Link>
           <Link
             to="/manager"
@@ -128,30 +134,34 @@ export function AppSidebar() {
                 : "text-sidebar-foreground/60 hover:text-sidebar-foreground")
             }
           >
-            Manager View
+            {t("nav.managerView")}
           </Link>
         </div>
         {isManager && (
           <div className="mt-3 flex items-center gap-1.5 rounded-lg border border-manager/40 bg-manager/15 px-2.5 py-1.5 text-[11px] font-medium text-manager">
             <ShieldCheck className="h-3.5 w-3.5" />
-            Manager portal
+            {t("nav.managerPortal")}
           </div>
         )}
       </div>
 
       <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
         <div className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
-          {isManager ? "Manager" : "New Hire"}
+          {isManager ? t("nav.sectionManager") : t("nav.sectionNewHire")}
         </div>
         <div className="space-y-1">{items.map(renderLink)}</div>
       </nav>
+
+      <div className="px-6 pb-3">
+        <LanguageSwitch tone="dark" />
+      </div>
 
       {/* Account row: profile on the left, log out on the right */}
       <div className="border-t border-sidebar-accent/40 p-3">
         <div className="flex items-center gap-2">
           <Link
             to="/settings"
-            title="Your profile"
+            title={t("nav.yourProfile")}
             className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-sidebar-accent"
           >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
@@ -165,8 +175,8 @@ export function AppSidebar() {
             type="button"
             onClick={handleLogout}
             disabled={signingOut}
-            aria-label="Log out"
-            title="Log out"
+            aria-label={t("nav.logout")}
+            title={t("nav.logout")}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:opacity-60"
           >
             {signingOut ? (

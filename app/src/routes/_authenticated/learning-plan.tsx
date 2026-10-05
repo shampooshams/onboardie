@@ -6,6 +6,8 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/content-state
 import { groupPlan, useLiveContent } from "@/lib/live-content";
 import { loadPlanDone, savePlanDone } from "@/lib/plan-progress";
 import { useProfile } from "@/lib/profile";
+import { useT } from "@/lib/i18n";
+import { phaseLabel } from "@/lib/i18n/phase";
 
 export const Route = createFileRoute("/_authenticated/learning-plan")({
   head: () => ({
@@ -21,6 +23,7 @@ export const Route = createFileRoute("/_authenticated/learning-plan")({
 
 
 function LearningPlanPage() {
+  const { t } = useT();
   const live = useLiveContent();
   const phases = useMemo(() => groupPlan(live.lines("plan")), [live.sections]);
   const { profile } = useProfile();
@@ -48,33 +51,32 @@ function LearningPlanPage() {
     setDone((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
   }
 
-  const allTasks = phases.flatMap((p) => p.tasks.map((t) => `${p.title}::${t}`));
+  const allTasks = phases.flatMap((p) => p.tasks.map((task) => `${p.title}::${task}`));
   const doneCount = allTasks.filter((k) => done.includes(k)).length;
   const pct = allTasks.length ? Math.round((doneCount / allTasks.length) * 100) : 0;
 
   return (
     <AppLayout>
       <header className="mb-8">
-        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">Learning Plan</h1>
+        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">{t("nav.plan")}</h1>
         <p className="mt-2 text-muted-foreground">
-          Your step-by-step path for the first 90 days
-          {live.role ? ` as a ${live.role}` : ""}.
+          {live.role ? t("plan.subtitleAs", { role: live.role }) : t("plan.subtitle")}
         </p>
       </header>
 
-      {live.isLoading && <LoadingState label="Loading your learning plan…" />}
+      {live.isLoading && <LoadingState label={t("plan.loading")} />}
       {live.failed && <ErrorState />}
       {!live.isLoading && !live.failed && phases.length === 0 && (
-        <EmptyState section="your learning plan" />
+        <EmptyState section={t("plan.empty")} />
       )}
 
       {phases.length > 0 && (
         <>
           <section className="mb-10 rounded-2xl bg-card border border-border p-6 shadow-sm">
             <div className="flex items-baseline justify-between mb-3">
-              <span className="text-sm font-medium">Overall progress</span>
+              <span className="text-sm font-medium">{t("plan.overall")}</span>
               <span className="text-sm text-muted-foreground">
-                {doneCount} of {allTasks.length} tasks · {pct}%
+                {t("plan.progress", { done: doneCount, total: allTasks.length, pct })}
               </span>
             </div>
             <div className="h-2 rounded-full bg-muted overflow-hidden">
@@ -84,7 +86,7 @@ function LearningPlanPage() {
 
           <div className="space-y-6">
             {phases.map((phase) => {
-              const keys = phase.tasks.map((t) => `${phase.title}::${t}`);
+              const keys = phase.tasks.map((task) => `${phase.title}::${task}`);
               const phaseDone = keys.filter((k) => done.includes(k)).length;
               return (
                 <section
@@ -92,7 +94,7 @@ function LearningPlanPage() {
                   className="rounded-2xl bg-card border border-border p-6 shadow-sm"
                 >
                   <div className="flex items-baseline justify-between mb-4">
-                    <h2 className="text-lg font-semibold">{phase.title}</h2>
+                    <h2 className="text-lg font-semibold">{phaseLabel(phase.title, t)}</h2>
                     <span className="text-xs font-medium text-muted-foreground">
                       {phaseDone}/{phase.tasks.length}
                     </span>

@@ -1,6 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { LanguageSwitch } from "@/components/language-switch";
+import { useT } from "@/lib/i18n";
+import { authErrorKey } from "@/lib/i18n/auth-errors";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +42,7 @@ export const Route = createFileRoute("/signup")({
 
 function SignupPage() {
   const { next } = Route.useSearch();
+  const { t } = useT();
   const [fullName, setFullName] = useState("");
   const [roleTitle, setRoleTitle] = useState("");
   const [appRole, setAppRole] = useState<"new_hire" | "manager">("new_hire");
@@ -71,26 +75,30 @@ function SignupPage() {
       },
     });
     setBusy(false);
-    if (signUpError) return setError(signUpError.message);
+    if (signUpError) {
+      const key = authErrorKey(signUpError.message);
+      return setError(key ? t(key) : signUpError.message);
+    }
     if (data.session) {
       window.location.href = appRole === "manager" ? "/manager" : "/";
       return;
     }
-    return setMessage("Check your email to confirm your account, then log in.");
+    return setMessage(t("auth.checkEmail"));
   }
 
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
       <div className="w-full max-w-sm rounded-xl border border-border bg-card p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold text-foreground">Create your account</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Access your onboarding coach and role content.
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-2xl font-semibold text-foreground">{t("auth.signupTitle")}</h1>
+          <LanguageSwitch />
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">{t("auth.subtitle")}</p>
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="fullName">Full name</Label>
+            <Label htmlFor="fullName">{t("auth.fullName")}</Label>
             <Input
               id="fullName"
               required
@@ -101,7 +109,7 @@ function SignupPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="roleTitle">Job title</Label>
+            <Label htmlFor="roleTitle">{t("auth.jobTitle")}</Label>
             <Input
               id="roleTitle"
               required
@@ -111,12 +119,12 @@ function SignupPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>I am a</Label>
+            <Label>{t("auth.iAm")}</Label>
             <div className="grid grid-cols-2 gap-2">
               {(
                 [
-                  { value: "new_hire", label: "New Hire" },
-                  { value: "manager", label: "Manager" },
+                  { value: "new_hire", label: t("auth.newHire") },
+                  { value: "manager", label: t("auth.manager") },
                 ] as const
               ).map((option) => (
                 <button
@@ -138,7 +146,7 @@ function SignupPage() {
           </div>
           {appRole === "new_hire" && (
             <div className="space-y-2">
-              <Label htmlFor="startDate">Start date</Label>
+              <Label htmlFor="startDate">{t("auth.startDate")}</Label>
               <Input
                 id="startDate"
                 type="date"
@@ -146,13 +154,11 @@ function SignupPage() {
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">
-                Your first working day — we use it to count your 90 days.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("auth.startDateHint")}</p>
             </div>
           )}
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{t("auth.email")}</Label>
             <Input
               id="email"
               type="email"
@@ -163,20 +169,17 @@ function SignupPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="inviteCode">Company / Invite code (optional)</Label>
+            <Label htmlFor="inviteCode">{t("auth.inviteCode")}</Label>
             <Input
               id="inviteCode"
               placeholder="ONB-XXXXXX"
               value={inviteCode}
               onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
             />
-            <p className="text-xs text-muted-foreground">
-              Got a code from your manager? Enter it to join their company. Leave it empty to be
-              grouped by your email address.
-            </p>
+            <p className="text-xs text-muted-foreground">{t("auth.inviteHint")}</p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">{t("auth.password")}</Label>
             <Input
               id="password"
               type="password"
@@ -194,7 +197,7 @@ function SignupPage() {
           )}
           {message && <p className="text-sm text-muted-foreground">{message}</p>}
           <Button type="submit" className="w-full" disabled={busy}>
-            Sign up
+            {t("auth.signupButton")}
           </Button>
         </form>
 
@@ -204,7 +207,7 @@ function SignupPage() {
           search={{ next }}
           className="mt-6 block w-full text-center text-sm text-muted-foreground underline-offset-4 hover:underline"
         >
-          Already have an account? Log in
+          {t("auth.toLogin")}
         </Link>
       </div>
     </main>

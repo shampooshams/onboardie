@@ -6,6 +6,7 @@ import { AppLayout } from "@/components/app-layout";
 import { askCoach } from "@/lib/coach.functions";
 import { exampleQuestions, useLiveContent } from "@/lib/live-content";
 import { useProfile } from "@/lib/profile";
+import { useT } from "@/lib/i18n";
 
 
 export const Route = createFileRoute("/_authenticated/ai-coach")({
@@ -20,20 +21,13 @@ export const Route = createFileRoute("/_authenticated/ai-coach")({
   component: AiCoachPage,
 });
 
-const VERIFIED_BY = "Verified by your manager";
-
 /** Shown only until this role's own Q&A content loads. */
-const FALLBACK_SUGGESTIONS = [
-  "What does success look like in my first 90 days?",
-  "Which tools do I need access to?",
-  "Who should I contact when I'm stuck?",
-] as const;
-
-const AI_ERROR = "I couldn't reach the coach service just now — please try again.";
+const FALLBACK_SUGGESTIONS = ["coach.fallback1", "coach.fallback2", "coach.fallback3"] as const;
 
 type Message = { id: string; role: "user" | "coach"; text: string };
 
 function AiCoachPage() {
+  const { t, lang } = useT();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -44,8 +38,8 @@ function AiCoachPage() {
   // Examples come from this role's own Q&A, spread across its topic groups.
   const suggestions = useMemo(() => {
     const fromRole = exampleQuestions(live.lines("faq"), 4);
-    return fromRole.length >= 2 ? fromRole : [...FALLBACK_SUGGESTIONS];
-  }, [live.sections]);
+    return fromRole.length >= 2 ? fromRole : FALLBACK_SUGGESTIONS.map((key) => t(key));
+  }, [live.sections, t]);
   const { profile } = useProfile();
   const firstName = (profile?.full_name ?? "").trim().split(/\s+/)[0] ?? "";
 
@@ -66,7 +60,7 @@ function AiCoachPage() {
     setInput("");
     setIsTyping(true);
 
-    let reply = AI_ERROR;
+    let reply = t("coach.error");
     try {
       const result = await ask({
         data: {
@@ -75,6 +69,7 @@ function AiCoachPage() {
             content: m.text,
           })),
           previewRoleId: live.previewRoleId,
+          lang,
         },
       });
       reply = result.ok ? result.text : result.message;
@@ -99,10 +94,10 @@ function AiCoachPage() {
             <Sparkles className="h-6 w-6" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-xl font-semibold tracking-tight">Chat with Your AI Coach</h1>
+            <h1 className="text-xl font-semibold tracking-tight">{t("nav.coach")}</h1>
             <div className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
               <ShieldCheck className="h-3.5 w-3.5" />
-              {VERIFIED_BY}
+              {t("coach.verified")}
             </div>
           </div>
         </header>
@@ -112,11 +107,9 @@ function AiCoachPage() {
           {messages.length === 0 && (
             <div className="max-w-md mx-auto text-center pt-8">
               <h2 className="text-2xl font-semibold tracking-tight">
-                {firstName ? `Hi ${firstName}, how can I help?` : "Hi, how can I help?"}
+                {firstName ? t("coach.helloName", { name: firstName }) : t("coach.hello")}
               </h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Ask anything about your role, tools, or first weeks. Answers are reviewed by your manager.
-              </p>
+              <p className="mt-2 text-sm text-muted-foreground">{t("coach.intro")}</p>
             </div>
           )}
 
@@ -163,20 +156,20 @@ function AiCoachPage() {
                 }
               }}
               rows={1}
-              placeholder="Ask your AI Coach anything…"
+              placeholder={t("coach.placeholder")}
               className="flex-1 resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground max-h-40"
             />
             <button
               type="submit"
               disabled={!input.trim() || isTyping}
-              aria-label="Send message"
+              aria-label={t("coach.send")}
               className="h-9 w-9 shrink-0 rounded-xl bg-primary text-primary-foreground flex items-center justify-center hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
             >
               <Send className="h-4 w-4" />
             </button>
           </div>
           <p className="mt-2 text-xs text-muted-foreground text-center">
-            The AI Coach can make mistakes. When in doubt, ask your manager.
+            {t("coach.disclaimer")}
           </p>
         </form>
       </div>

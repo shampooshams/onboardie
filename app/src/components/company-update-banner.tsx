@@ -2,9 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { ArrowUpRight, Megaphone } from "lucide-react";
 import { getCompanyUpdate, type CompanyUpdateResult } from "@/lib/insights.functions";
+import { useT } from "@/lib/i18n";
 
 /** Single manager-editable featured update shown to new hires. */
 export function CompanyUpdateBanner() {
+  const { t } = useT();
   const fetchUpdate = useServerFn(getCompanyUpdate);
   const { data } = useQuery<CompanyUpdateResult>({
     queryKey: ["company-update"],
@@ -33,7 +35,7 @@ export function CompanyUpdateBanner() {
         </div>
         <div className="min-w-0 flex-1">
           <div className="inline-flex items-center rounded-full bg-primary/20 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-primary-foreground">
-            Company update
+            {t("update.badge")}
           </div>
           <h2 className="mt-2 text-xl md:text-2xl font-semibold leading-snug tracking-tight">
             {update.title}

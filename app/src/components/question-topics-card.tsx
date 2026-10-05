@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { MessageCircleQuestion, ChevronDown } from "lucide-react";
 import { getQuestionTopics, type TopicsResult } from "@/lib/insights.functions";
+import { useT, type MessageKey } from "@/lib/i18n";
 
 /** Manager-only: which topics new hires ask the AI Coach about this month. */
 const SEGMENT_COLORS = [
@@ -14,6 +15,12 @@ const SEGMENT_COLORS = [
 ];
 
 export function QuestionTopicsCard() {
+  const { t } = useT();
+  const topicLabel = (topic: string) => {
+    const key = `topic.${topic}` as MessageKey;
+    const label = t(key);
+    return label === key ? topic : label;
+  };
   const fetchTopics = useServerFn(getQuestionTopics);
   const [openTopic, setOpenTopic] = useState<string | null>(null);
   const { data, isLoading } = useQuery<TopicsResult>({
@@ -55,30 +62,26 @@ export function QuestionTopicsCard() {
           <MessageCircleQuestion className="h-5 w-5" />
         </div>
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold">Most common questions this month</h2>
+          <h2 className="text-sm font-semibold">{t("topics.title")}</h2>
           <p className="text-xs text-muted-foreground">
-            Across all new hires · {total} {total === 1 ? "question" : "questions"}
+            {t(total === 1 ? "topics.subtitleOne" : "topics.subtitleMany", { n: total })}
           </p>
         </div>
       </div>
 
       <div className="mt-5">
-        {isLoading && <p className="text-sm text-muted-foreground">Loading question topics…</p>}
+        {isLoading && <p className="text-sm text-muted-foreground">{t("topics.loading")}</p>}
         {!isLoading && data?.ok === false && (
-          <p className="text-sm text-muted-foreground">
-            We couldn't load question topics right now.
-          </p>
+          <p className="text-sm text-muted-foreground">{t("topics.error")}</p>
         )}
         {!isLoading && data?.ok && counts.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            No AI Coach questions yet this month. Topics appear here as new hires start asking.
-          </p>
+          <p className="text-sm text-muted-foreground">{t("topics.empty")}</p>
         )}
 
         {segments.length > 0 && (
           <div className="flex flex-col sm:flex-row items-center gap-6">
             <div className="relative shrink-0" style={{ width: size, height: size }}>
-              <svg width={size} height={size} className="-rotate-90" role="img" aria-label="Question topics breakdown">
+              <svg width={size} height={size} className="-rotate-90" role="img" aria-label={t("topics.chartLabel")}>
                 <circle
                   cx={size / 2}
                   cy={size / 2}
@@ -107,7 +110,7 @@ export function QuestionTopicsCard() {
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <span className="text-2xl font-semibold leading-none">{total}</span>
-                <span className="text-[11px] text-muted-foreground mt-1">questions</span>
+                <span className="text-[11px] text-muted-foreground mt-1">{t("topics.questions")}</span>
               </div>
             </div>
 
@@ -127,7 +130,7 @@ export function QuestionTopicsCard() {
                         className="h-2.5 w-2.5 rounded-full shrink-0"
                         style={{ backgroundColor: s.color }}
                       />
-                      <span className="text-sm font-medium flex-1 truncate">{s.topic}</span>
+                      <span className="text-sm font-medium flex-1 truncate">{topicLabel(s.topic)}</span>
                       <span className="text-xs text-muted-foreground tabular-nums">
                         {s.count} · {s.pct}%
                       </span>
@@ -138,7 +141,7 @@ export function QuestionTopicsCard() {
                     {open && (
                       <ul className="mt-1 ml-5 space-y-1.5 border-l border-border pl-3">
                         {s.questions.length === 0 && (
-                          <li className="text-xs text-muted-foreground">No questions stored yet.</li>
+                          <li className="text-xs text-muted-foreground">{t("topics.noneStored")}</li>
                         )}
                         {s.questions.map((q, i) => (
                           <li key={i} className="text-xs text-foreground/80 leading-relaxed">
@@ -156,10 +159,7 @@ export function QuestionTopicsCard() {
       </div>
 
       {segments.length > 0 && (
-        <p className="mt-5 text-xs text-muted-foreground">
-          Click a topic to read the actual questions. Questions are shown anonymously — never linked
-          to a specific new hire.
-        </p>
+        <p className="mt-5 text-xs text-muted-foreground">{t("topics.footnote")}</p>
       )}
     </section>
   );

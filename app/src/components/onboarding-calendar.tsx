@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Flame } from "lucide-react";
 import { monthGrid, startDateFor } from "@/lib/working-days";
-
-const WEEKDAY_LABELS = ["Mo", "Tu", "We", "Th", "Fr"] as const;
+import { useT } from "@/lib/i18n";
 
 /**
  * Compact Duolingo-style month calendar: weekdays only, every working day
@@ -19,6 +18,8 @@ export function OnboardingCalendar({
   /** The hire's start date (YYYY-MM-DD), when we know it. */
   startDate?: string | null;
 }) {
+  const { t, locale } = useT();
+  const weekdayLabels = t("cal.weekdays").split(",");
   const today = useMemo(() => {
     const now = new Date();
     return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
@@ -42,7 +43,7 @@ export function OnboardingCalendar({
     [month, start, today],
   );
 
-  const monthLabel = month.toLocaleDateString("en-GB", {
+  const monthLabel = month.toLocaleDateString(locale, {
     month: "long",
     year: "numeric",
     timeZone: "UTC",
@@ -57,7 +58,7 @@ export function OnboardingCalendar({
         <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
-            aria-label="Previous month"
+            aria-label={t("cal.prev")}
             onClick={() => setOffset((o) => o - 1)}
             className="h-6 w-6 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 flex items-center justify-center transition-colors"
           >
@@ -65,7 +66,7 @@ export function OnboardingCalendar({
           </button>
           <button
             type="button"
-            aria-label="Next month"
+            aria-label={t("cal.next")}
             onClick={() => setOffset((o) => o + 1)}
             className="h-6 w-6 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 flex items-center justify-center transition-colors"
           >
@@ -79,12 +80,14 @@ export function OnboardingCalendar({
         style={{ backgroundColor: "var(--gold-soft)" }}
       >
         <Flame className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--gold)" }} />
-        <span className="text-xs font-semibold">{workingDaysElapsed} days in</span>
-        <span className="ml-auto text-[11px] text-muted-foreground">{remaining} to go</span>
+        <span className="text-xs font-semibold">{t("cal.daysIn", { n: workingDaysElapsed })}</span>
+        <span className="ml-auto text-[11px] text-muted-foreground">
+          {t("cal.toGo", { n: remaining })}
+        </span>
       </div>
 
       <div className="mt-3 grid grid-cols-5 gap-1 text-center text-[10px] font-semibold uppercase text-muted-foreground">
-        {WEEKDAY_LABELS.map((d) => (
+        {weekdayLabels.map((d) => (
           <div key={d} className="py-0.5">
             {d}
           </div>
@@ -105,10 +108,10 @@ export function OnboardingCalendar({
               key={cell.iso}
               title={
                 cell.holiday
-                  ? `${cell.holiday} — public holiday in Bavaria, not counted`
+                  ? t("cal.holidayTitle", { name: cell.holiday })
                   : cell.completed
-                    ? "Counted onboarding day"
-                    : "Upcoming working day"
+                    ? t("cal.countedDay")
+                    : t("cal.upcoming")
               }
               className={`${base} ${style} ${cell.isToday ? "ring-2 ring-offset-1 ring-primary" : ""}`}
               style={
@@ -126,26 +129,26 @@ export function OnboardingCalendar({
       <ul className="mt-4 space-y-1.5 border-t border-border pt-3 text-[11px] text-muted-foreground">
         <li className="flex items-center gap-2">
           <span className="h-3 w-3 shrink-0 rounded-[4px] bg-primary" />
-          Counted working day
+          {t("cal.legendCounted")}
         </li>
         <li className="flex items-center gap-2">
           <span className="h-3 w-3 shrink-0 rounded-[4px] border border-dashed border-border" />
-          Upcoming working day
+          {t("cal.upcoming")}
         </li>
         <li className="flex items-center gap-2">
           <span
             className="h-3 w-3 shrink-0 rounded-[4px]"
             style={{ backgroundColor: "var(--coral-soft)", border: "1px solid var(--coral)" }}
           />
-          Public holiday in Bavaria
+          {t("cal.legendHoliday")}
         </li>
         <li className="flex items-center gap-2">
           <span className="h-3 w-3 shrink-0 rounded-[4px] ring-2 ring-primary" />
-          Today
+          {t("cal.today")}
         </li>
       </ul>
       <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-        Weekends are hidden; weekends and Bavarian public holidays never count.
+        {t("cal.note")}
       </p>
     </aside>
   );

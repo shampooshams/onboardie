@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { langFrom, translate, type Lang } from "./i18n/translate";
 
 const SYSTEM_PROMPT = `You are an onboarding coach for new hires at a company. Your job is to help with specific tasks related to their role — tool and system usage, processes, day-to-day work, and knowing who to contact. Only answer using the company content provided to you — do not use general knowledge or make anything up.
 
@@ -21,14 +22,25 @@ Format every answer for fast reading, using markdown:
 - Use a numbered list for steps and a bulleted list for multiple items, options, tools, or people.
 - Keep paragraphs to 1-2 sentences; never write a dense block of text.
 - Use **bold** for key terms, field names, tool names, people, and channels.
-- Stay under roughly 150 words unless the question genuinely needs more.`;
+- Stay under roughly 150 words unless the question genuinely needs more.
+
+LANGUAGE:
+- Reply in the language of the new hire's latest message, even when the content provided is in another language; translate what you quote from it.
+- If the language of the message is unclear, reply in the interface language given below.
+- In German, always address the new hire formally with "Sie", never "du".`;
+
+const LANGUAGE_NAMES = { en: "English", de: "German" } as const;
 
 type CoachMessage = { role: "user" | "assistant"; content: string };
 
 export type CoachResult = { ok: true; text: string } | { ok: false; message: string };
 
-function validate(input: unknown): { messages: CoachMessage[]; previewRoleId: string | null } {
-  const data = input as { messages?: unknown; previewRoleId?: unknown };
+function validate(input: unknown): {
+  messages: CoachMessage[];
+  previewRoleId: string | null;
+  lang: Lang;
+} {
+  const data = input as { messages?: unknown; previewRoleId?: unknown; lang?: unknown };
   if (!Array.isArray(data?.messages)) throw new Error("messages are required");
   const messages = data.messages
     .filter(
@@ -43,7 +55,7 @@ function validate(input: unknown): { messages: CoachMessage[]; previewRoleId: st
     typeof data.previewRoleId === "string" && data.previewRoleId.trim()
       ? data.previewRoleId.trim()
       : null;
-  return { messages, previewRoleId };
+  return { messages, previewRoleId, lang: langFrom(data.lang) };
 }
 
 export const askCoach = createServerFn({ method: "POST" })
@@ -125,8 +137,7 @@ export const askCoach = createServerFn({ method: "POST" })
       });
       return {
         ok: false,
-        message:
-          "I'm having trouble reading your role content right now — please try again shortly, and let your manager know if it keeps happening.",
+        message: translate(data.lang, "ai.roleContentUnavailable"),
       };
     }
 
@@ -209,6 +220,7 @@ export const askCoach = createServerFn({ method: "POST" })
       contentLength: roleContent.length + extraContext.length,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: `Interface language: ${LANGUAGE_NAMES[data.lang]}.` },
         {
           role: "system",
           content: `Role content${primaryRole ? ` for the ${primaryRole} role` : ""}:\n\n${roleContent}`,
@@ -233,7 +245,7 @@ export const askCoach = createServerFn({ method: "POST" })
       ],
     });
 
-    if (!result.ok) return { ok: false, message: aiFailureMessage(result.reason) };
+    if (!result.ok) return { ok: false, message: aiFailureMessage(result.reason, data.lang) };
 
     // Manager-only insight: bucket the question by topic. Never surfaced to the new hire.
     // Preview questions are the manager's own, so they are not logged as hire questions.

@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { Building2, Mail, Phone, Search } from "lucide-react";
 import { AppLayout } from "@/components/app-layout";
+import { useT } from "@/lib/i18n";
 import { EmptyState, ErrorState, LoadingState } from "@/components/content-state";
 import { dedupeEntries, initials, parseEntry, splitNote, useLiveContent } from "@/lib/live-content";
 
@@ -17,8 +18,9 @@ export const Route = createFileRoute("/_authenticated/contacts")({
   component: ContactsPage,
 });
 
+/** Internal filter values; their labels are translated when shown. */
 const OTHER = "Other";
-const MISSING = "Not provided yet";
+const ALL = "All";
 
 /** One contact detail row: icon + value, or a muted placeholder when missing. */
 function DetailRow({
@@ -30,11 +32,12 @@ function DetailRow({
   value: string;
   href?: string;
 }) {
+  const { t } = useT();
   const content = (
     <>
       <span className="shrink-0 text-muted-foreground">{icon}</span>
       <span className={value ? "break-all" : "italic text-muted-foreground/70"}>
-        {value || MISSING}
+        {value || t("contacts.missing")}
       </span>
     </>
   );
@@ -49,9 +52,12 @@ function DetailRow({
 }
 
 function ContactsPage() {
+  const { t } = useT();
   const live = useLiveContent();
   const [query, setQuery] = useState("");
-  const [department, setDepartment] = useState("All");
+  const [department, setDepartment] = useState(ALL);
+  const deptLabel = (d: string) =>
+    d === ALL ? t("contacts.all") : d === OTHER ? t("contacts.other") : d;
 
   const contacts = useMemo(
     () => dedupeEntries(live.lines("contacts").map((line) => parseEntry(line))),
@@ -70,7 +76,7 @@ function ContactsPage() {
     const q = query.trim().toLowerCase();
     return contacts.filter((c) => {
       const dept = c.meta.department || OTHER;
-      if (department !== "All" && dept !== department) return false;
+      if (department !== ALL && dept !== department) return false;
       if (!q) return true;
       return [c.label, c.detail, dept, c.meta.email, c.meta.phone]
         .join(" ")
@@ -93,17 +99,15 @@ function ContactsPage() {
   return (
     <AppLayout>
       <header className="mb-8">
-        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">Who to Contact</h1>
-        <p className="mt-2 text-muted-foreground">
-          Meet the people who can help you succeed in your first 90 days.
-        </p>
+        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">{t("nav.contacts")}</h1>
+        <p className="mt-2 text-muted-foreground">{t("contacts.subtitle")}</p>
       </header>
 
-      {live.isLoading && <LoadingState label="Loading your contacts…" />}
+      {live.isLoading && <LoadingState label={t("contacts.loading")} />}
       {live.failed && <ErrorState />}
 
       {!live.isLoading && !live.failed && contacts.length === 0 && (
-        <EmptyState section="your contacts" />
+        <EmptyState section={t("contacts.empty")} />
       )}
 
       {contacts.length > 0 && (
@@ -113,14 +117,14 @@ function ContactsPage() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by name, role, department, or email…"
+              placeholder={t("contacts.search")}
               className="w-full rounded-xl border border-border bg-card pl-10 pr-4 py-3 text-sm outline-none focus:border-primary/50 transition-colors"
             />
           </div>
 
           {departments.length > 1 && (
             <div className="mb-6 flex flex-wrap gap-2">
-              {["All", ...departments].map((d) => (
+              {[ALL, ...departments].map((d) => (
                 <button
                   key={d}
                   type="button"
@@ -132,7 +136,7 @@ function ContactsPage() {
                       : "border-border bg-card text-muted-foreground hover:border-primary/40")
                   }
                 >
-                  {d}
+                  {deptLabel(d)}
                 </button>
               ))}
             </div>
@@ -142,7 +146,7 @@ function ContactsPage() {
             {grouped.map(([dept, people]) => (
               <section key={dept}>
                 <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {dept}
+                  {deptLabel(dept)}
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {people.map((c, i) => (
@@ -198,7 +202,7 @@ function ContactsPage() {
             ))}
             {filtered.length === 0 && (
               <div className="text-center text-sm text-muted-foreground py-12">
-                No contacts match your search.
+                {t("contacts.noMatch")}
               </div>
             )}
           </div>

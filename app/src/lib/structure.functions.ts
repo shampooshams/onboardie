@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { langFrom, translate, type Lang } from "./i18n/translate";
 
 const SYSTEM_PROMPT = `You are structuring a manager's raw onboarding notes into a fixed format for a new-hire knowledge base. Extract and organize the content into exactly these sections: Role Overview, Learning Plan (Week 1, Week 2, Month 1, Month 2, Month 3), FAQs (question and answer pairs), Tools & How to Use Them, Who to Contact. Do not invent information that isn't in the source text. If a section has no relevant content in the source, mark it as "Not provided — add manually" rather than filling it in. Preserve the granularity of the source: if the notes list several items each with their own detail (for example a table of tools with a purpose and an owner per row), keep one line per item with its own purpose and contact. Never merge distinct items into a single summarized line, and never drop which item maps to which purpose or person. Do not invent information — just avoid over-compressing what is already there.
 
@@ -16,7 +17,8 @@ const JSON_INSTRUCTIONS = `Return the result as a json object with exactly these
 - faq: one line per question/answer pair formatted "Question? — Answer".
 - tools: one line per distinct tool. The part before the first "—" must be ONLY the product's own name (e.g. "Asana", "SharePoint", "Canva", "Descript") — never a board, folder or document name, and never the same product twice. If the notes describe several areas of one product, keep one line per product and separate the areas inside the detail with semicolons, prefixing each with its area, e.g. "Asana — Social media: Best-Performing Posts board tracks top posts; Project management: Design Production Timeline tracks asset deadlines | Expert: Name | Link: URL". Include Expert and Link only when the source names them, and include every tool mentioned anywhere in the notes.
 - contacts: one line per person. Format: "Name — role (what they handle) | Department: Team or department | Email: address | Phone: number". Keep the role before the parentheses to 6 words or fewer. Include Department, Email and Phone only when the source provides them. Keep every person and every distinct responsibility from the source.
-If a section has no relevant content, return exactly ["Not provided — add manually"] for it.`;
+If a section has no relevant content, return exactly ["Not provided — add manually"] for it.
+Language: write every item in the same language as the raw notes (German notes give German content). Keep these markers exactly as written here, in English, because the app reads them: the phase prefixes ("Week 1:", "Month 1:"…), the labels "Summary:", "Core function:", "Your impact:", "What success looks like:", the field names "Department:", "Email:", "Phone:", "Expert:", "Link:", and "Not provided — add manually". When writing German, address the reader formally with "Sie".`;
 
 
 export type StructuredContent = {
@@ -35,14 +37,15 @@ const KEYS = ["overview", "plan", "faq", "tools", "contacts"] as const;
 const FALLBACK = "Not provided — add manually";
 const CHUNK_CHARS = 30_000;
 
-function validate(input: unknown): { role: string; content: string } {
-  const data = input as { role?: unknown; content?: unknown };
+function validate(input: unknown): { role: string; content: string; lang: Lang } {
+  const data = input as { role?: unknown; content?: unknown; lang?: unknown };
   if (typeof data?.content !== "string" || data.content.trim().length === 0) {
     throw new Error("content is required");
   }
   return {
     role: typeof data.role === "string" && data.role.trim() ? data.role.trim() : "New hire role",
     content: data.content.slice(0, 300_000),
+    lang: langFrom(data.lang),
   };
 }
 
@@ -148,7 +151,7 @@ export const structureContent = createServerFn({ method: "POST" })
         ],
       });
 
-      if (!result.ok) return { ok: false, message: aiFailureMessage(result.reason) };
+      if (!result.ok) return { ok: false, message: aiFailureMessage(result.reason, data.lang) };
 
       const parsed = parseTolerant(result.text);
       if (!parsed) {
@@ -158,11 +161,7 @@ export const structureContent = createServerFn({ method: "POST" })
           detail: `unparseable model output: ${result.text.slice(0, 400)}`,
           contentLength: part.length,
         });
-        return {
-          ok: false,
-          message:
-            "The AI's response came back in an unexpected format — please try again, or split the content into smaller sections.",
-        };
+        return { ok: false, message: translate(data.lang, "ai.badFormat") };
       }
       results.push(normalize(parsed));
     }

@@ -4,6 +4,7 @@ import { getLiveContent, type LiveContentResult } from "./live-content.functions
 import { getPreviewContent } from "./preview.functions";
 import { usePreviewRole } from "./preview";
 import { useProfile } from "./profile";
+import type { MessageKey } from "./i18n/translate";
 
 export const NOT_PROVIDED = "Not provided — add manually";
 
@@ -163,12 +164,24 @@ export type PlanPhase = { title: string; tasks: string[] };
 
 const PHASE_ORDER = ["Week 1", "Week 2", "Week 3", "Week 4", "Month 1", "Month 2", "Month 3"];
 
-/** Groups "Week 1: task" style plan lines into ordered phases. */
+/** German phase words, so "Woche 1:" lands in the same phase as "Week 1:". */
+const PHASE_WORDS: Record<string, string> = { woche: "week", monat: "month", tag: "day" };
+
+/**
+ * Groups "Week 1: task" style plan lines into ordered phases. Phase titles stay
+ * English ("Week 1") because ticked-task progress is saved under them; pages
+ * translate them for display.
+ */
 export function groupPlan(lines: string[]): PlanPhase[] {
   const groups = new Map<string, string[]>();
   for (const line of lines) {
-    const match = /^(week\s*\d+|month\s*\d+|day\s*\d+[^:]*)\s*[:\-—]\s*(.+)$/i.exec(line.trim());
-    const title = match ? titleCase(match[1]) : "Other focus areas";
+    const match =
+      /^((?:week|woche|month|monat)\s*\d+|(?:day|tag)\s*\d+[^:]*)\s*[:\-–—]\s*(.+)$/i.exec(
+        line.trim(),
+      );
+    const title = match
+      ? titleCase(match[1].replace(/^(woche|monat|tag)/i, (w) => PHASE_WORDS[w.toLowerCase()]!))
+      : "Other focus areas";
     const task = match ? match[2].trim() : line.trim();
     if (!task || task.toLowerCase().startsWith(NOT_PROVIDED.toLowerCase().slice(0, 13))) continue;
     const list = groups.get(title) ?? [];
@@ -472,19 +485,19 @@ export function shorten(text: string, maxChars = 110): string {
 
 /** FAQ topic buckets so questions can be grouped instead of one long list. */
 export const FAQ_CATEGORIES = [
-  { id: "tooling", label: "Tools & systems", keywords: ["crm", "tool", "software", "system", "login", "access", "account", "dashboard", "template", "asana", "slack", "notion", "hubspot"] },
-  { id: "scheduling", label: "Scheduling & time", keywords: ["meeting", "calendar", "schedule", "deadline", "hours", "holiday", "vacation", "leave", "sick", "standup", "when", "time off"] },
-  { id: "process", label: "Process & workflow", keywords: ["process", "workflow", "step", "how do i", "policy", "approve", "report", "log", "pipeline", "qualif", "escalat", "handover"] },
-  { id: "people", label: "People & contacts", keywords: ["who", "contact", "manager", "team", "buddy", "mentor", "ask"] },
-  { id: "expectations", label: "Role & expectations", keywords: ["expect", "target", "goal", "kpi", "quota", "success", "review", "probation", "responsib"] },
-] as const;
+  { id: "tooling", label: "faqcat.tooling", keywords: ["crm", "tool", "software", "system", "login", "access", "account", "dashboard", "template", "asana", "slack", "notion", "hubspot", "zugang", "konto", "anmeld", "vorlage"] },
+  { id: "scheduling", label: "faqcat.scheduling", keywords: ["meeting", "calendar", "schedule", "deadline", "hours", "holiday", "vacation", "leave", "sick", "standup", "when", "time off", "termin", "kalender", "frist", "stunden", "urlaub", "krank", "wann", "arbeitszeit", "besprechung"] },
+  { id: "process", label: "faqcat.process", keywords: ["process", "workflow", "step", "how do i", "policy", "approve", "report", "log", "pipeline", "qualif", "escalat", "handover", "prozess", "ablauf", "schritt", "wie kann ich", "wie mache ich", "richtlinie", "freigabe", "genehmig", "bericht", "eskalat", "übergabe"] },
+  { id: "people", label: "faqcat.people", keywords: ["who", "contact", "manager", "team", "buddy", "mentor", "ask", "wer ist", "an wen", "kontakt", "ansprech", "führungskraft", "vorgesetzt", "kolleg"] },
+  { id: "expectations", label: "faqcat.expectations", keywords: ["expect", "target", "goal", "kpi", "quota", "success", "review", "probation", "responsib", "erwart", "ziel", "erfolg", "probezeit", "verantwort", "quote"] },
+] as const satisfies readonly { id: string; label: MessageKey; keywords: readonly string[] }[];
 
-export type FaqGroup = { id: string; label: string; items: { q: string; a: string }[] };
+export type FaqGroup = { id: string; label: MessageKey; items: { q: string; a: string }[] };
 
 /** Buckets Q&A pairs into topic groups, keeping an "Other questions" catch-all. */
 export function groupFaqs(items: { q: string; a: string }[]): FaqGroup[] {
   const groups = new Map<string, FaqGroup>();
-  const push = (id: string, label: string, item: { q: string; a: string }) => {
+  const push = (id: string, label: MessageKey, item: { q: string; a: string }) => {
     const group = groups.get(id) ?? { id, label, items: [] };
     group.items.push(item);
     groups.set(id, group);
@@ -493,7 +506,7 @@ export function groupFaqs(items: { q: string; a: string }[]): FaqGroup[] {
     const haystack = `${item.q} ${item.a}`.toLowerCase();
     const match = FAQ_CATEGORIES.find((c) => c.keywords.some((k) => haystack.includes(k)));
     if (match) push(match.id, match.label, item);
-    else push("other", "Other questions", item);
+    else push("other", "faqcat.other", item);
   }
   const order = [...FAQ_CATEGORIES.map((c) => c.id), "other"];
   return [...groups.values()].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));

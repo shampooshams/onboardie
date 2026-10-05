@@ -2,12 +2,22 @@
 // Every failure carries a message that tells the manager what to do next,
 // instead of one generic "couldn't read that file".
 
+import { translate, type MessageKey } from "./i18n/translate";
+
 export const ACCEPTED_FILE_TYPES =
   ".pdf,.docx,.txt,.md,.rtf,.csv,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 const MAX_BYTES = 25 * 1024 * 1024;
 
-export class ExtractionError extends Error {}
+/** Carries a translation key so the page can show the reason in the user's language. */
+export class ExtractionError extends Error {
+  constructor(
+    readonly key: MessageKey,
+    readonly vars?: Record<string, string>,
+  ) {
+    super(translate("en", key, vars));
+  }
+}
 
 function extension(name: string) {
   const idx = name.lastIndexOf(".");
@@ -58,26 +68,20 @@ function rtfToText(raw: string) {
 /** Extracts plain text from a manager-uploaded file. Throws ExtractionError on failure. */
 export async function extractFileText(file: File): Promise<string> {
   if (file.size === 0) {
-    throw new ExtractionError("That file looks empty — pick another file or paste the text below.");
+    throw new ExtractionError("file.empty");
   }
   if (file.size > MAX_BYTES) {
-    throw new ExtractionError(
-      "That file is larger than 25 MB — try a smaller file, or paste the text below.",
-    );
+    throw new ExtractionError("file.tooLarge");
   }
 
   const ext = extension(file.name);
   let text = "";
 
   if (ext === "doc") {
-    throw new ExtractionError(
-      "Older Word .doc files can't be read — save it as .docx or PDF, or paste the text below.",
-    );
+    throw new ExtractionError("file.oldDoc");
   }
   if (ext === "pages" || ext === "key" || ext === "xlsx" || ext === "pptx") {
-    throw new ExtractionError(
-      `.${ext} files aren't supported — export to PDF, .docx or .txt, or paste the text below.`,
-    );
+    throw new ExtractionError("file.unsupportedExport", { ext });
   }
 
   try {
@@ -96,25 +100,17 @@ export async function extractFileText(file: File): Promise<string> {
     ) {
       text = await extractTxt(file);
     } else {
-      throw new ExtractionError(
-        `We can't read .${ext} files — use PDF, Word (.docx) or .txt, or paste the text below.`,
-      );
+      throw new ExtractionError("file.unsupported", { ext });
     }
   } catch (err) {
     if (err instanceof ExtractionError) throw err;
     console.error("File extraction failed", err);
-    throw new ExtractionError(
-      "We couldn't read that file — it may be password-protected or damaged. Try pasting the text directly instead.",
-    );
+    throw new ExtractionError("file.unreadable");
   }
 
   const cleaned = text.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   if (cleaned.length < 20) {
-    throw new ExtractionError(
-      ext === "pdf"
-        ? "That PDF has no readable text — it looks like a scan or images. Try a text-based PDF, or paste the text below."
-        : "We couldn't find readable text in that file — try pasting the text directly instead.",
-    );
+    throw new ExtractionError(ext === "pdf" ? "file.scannedPdf" : "file.noText");
   }
   return cleaned;
 }
