@@ -4,6 +4,8 @@
 // Every failure is classified and persisted so a recurrence is diagnosable
 // instead of collapsing into a single generic user-facing message.
 
+import { translate, type Lang } from "./i18n/translate";
+
 export type AiFailureReason =
   | "config" // key missing in the running server
   | "auth" // gateway rejected the key
@@ -165,23 +167,23 @@ export async function callChatCompletion(options: {
   return { ok: false, reason: last.reason, status: last.status, detail: last.detail };
 }
 
-/** Plain-language message for a failure cause, safe to show a user. */
-export function aiFailureMessage(reason: AiFailureReason): string {
+/** Plain-language message for a failure cause, safe to show a user, in their language. */
+export function aiFailureMessage(reason: AiFailureReason, lang: Lang = "en"): string {
   switch (reason) {
     case "busy":
-      return "The AI service is busy right now — I tried a few times. Please try again in a moment.";
+      return translate(lang, "ai.busy");
     case "credits":
-      return "The AI service is unavailable because the AI account's credits or limits have been reached — please contact your admin.";
+      return translate(lang, "ai.credits");
     case "auth":
     case "config":
-      return "The AI service isn't configured correctly on the server — please let your admin know.";
+      return translate(lang, "ai.config");
     case "too_long":
-      return "That was too long for the AI to process in one go — try splitting it into smaller parts.";
+      return translate(lang, "ai.tooLong");
     case "network":
-      return "I couldn't reach the AI service — please check your connection and try again.";
+      return translate(lang, "ai.network");
     case "empty":
-      return "The AI didn't return an answer that time — please try rephrasing your question.";
+      return translate(lang, "ai.empty");
     default:
-      return "Something went wrong reaching the AI service — please try again.";
+      return translate(lang, "ai.unknown");
   }
 }

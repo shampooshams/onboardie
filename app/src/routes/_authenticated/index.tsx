@@ -18,6 +18,8 @@ import { loadPlanDone } from "@/lib/plan-progress";
 import { usePreviewStartDate } from "@/lib/preview";
 import { useProfile } from "@/lib/profile";
 import { workingDaysBetween } from "@/lib/working-days";
+import { useT, type MessageKey } from "@/lib/i18n";
+import { phaseLabel } from "@/lib/i18n/phase";
 
 
 export const Route = createFileRoute("/_authenticated/")({
@@ -48,64 +50,65 @@ function workingDaysSinceStart(startDate: string | null | undefined): number {
 const cards = [
   {
     to: "/ai-coach",
-    title: "Chat with Your AI Coach",
-    desc: "Ask anything, anytime. Your personal onboarding guide.",
+    title: "nav.coach",
+    desc: "dash.card.coachDesc",
     icon: Sparkles,
     bg: "var(--primary-soft)",
     fg: "var(--primary)",
   },
   {
     to: "/learning-plan",
-    title: "Learning Plan",
-    desc: "Your step-by-step path for the first 90 days.",
+    title: "nav.plan",
+    desc: "dash.card.planDesc",
     icon: BookOpen,
     bg: "var(--gold-soft)",
     fg: "var(--gold)",
   },
   {
     to: "/resources",
-    title: "Resources and Tools",
-    desc: "Every tool you'll use, and how to use it.",
+    title: "nav.resources",
+    desc: "dash.card.resourcesDesc",
     icon: Wrench,
     bg: "var(--teal-soft)",
     fg: "var(--teal)",
   },
   {
     to: "/contacts",
-    title: "Who to Contact",
-    desc: "Meet the people who can help you succeed.",
+    title: "nav.contacts",
+    desc: "dash.card.contactsDesc",
     icon: Users,
     bg: "var(--coral-soft)",
     fg: "var(--coral)",
   },
   {
     to: "/role-overview",
-    title: "Role Overview & Q&A",
-    desc: "Understand your role, expectations, and answers.",
+    title: "nav.roleOverview",
+    desc: "dash.card.roleDesc",
     icon: HelpCircle,
     bg: "var(--primary-soft)",
     fg: "var(--primary)",
   },
 ] as const;
 
-function greeting() {
+function greeting(): MessageKey {
   const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 18) return "Good afternoon";
-  return "Good evening";
+  if (h < 12) return "dash.greetMorning";
+  if (h < 18) return "dash.greetAfternoon";
+  return "dash.greetEvening";
 }
 
 
 function Dashboard() {
   const live = useLiveContent();
   const { profile } = useProfile();
-  const [greetingText, setGreetingText] = useState("Good morning");
-  useEffect(() => setGreetingText(greeting()), []);
+  const { t } = useT();
+  const [greetingKey, setGreetingKey] = useState<MessageKey>("dash.greetMorning");
+  useEffect(() => setGreetingKey(greeting()), []);
   // Previews simulate a hypothetical start date; real hires use their own.
   const { startDate: previewStart } = usePreviewStartDate(live.previewRoleId);
   const effectiveStart = live.isPreview ? previewStart || null : profile?.start_date ?? null;
   const day = workingDaysSinceStart(effectiveStart);
-  const name = profile?.full_name?.trim() || "there";
+  const firstName = profile?.full_name?.trim().split(" ")[0] ?? "";
   // While previewing, the badge must show the previewed role — not the manager's
   // own registered role. A real new hire always sees their own role title.
   const role = live.isPreview
@@ -123,7 +126,7 @@ function Dashboard() {
 
   const { accomplished, next } = useMemo(() => {
     const tasks = groupPlan(live.lines("plan")).flatMap((p) =>
-      p.tasks.map((t) => ({ key: `${p.title}::${t}`, phase: p.title, task: t })),
+      p.tasks.map((task) => ({ key: `${p.title}::${task}`, phase: p.title, task })),
     );
     return {
       accomplished: tasks.filter((t) => done.includes(t.key)).slice(-4),
@@ -132,12 +135,13 @@ function Dashboard() {
   }, [live.sections, done]);
 
   const stages = [
-    { label: "30 days", target: 30, sub: "Learn & observe" },
-    { label: "60 days", target: 60, sub: "Contribute" },
-    { label: "90 days", target: 90, sub: "Own it" },
+    { label: t("dash.days", { n: 30 }), target: 30, sub: t("dash.stage1"), focus: t("dash.focus1") },
+    { label: t("dash.days", { n: 60 }), target: 60, sub: t("dash.stage2"), focus: t("dash.focus2") },
+    { label: t("dash.days", { n: 90 }), target: 90, sub: t("dash.stage3"), focus: t("dash.focus3") },
   ];
   const progressPct = Math.min(100, (day / 90) * 100);
   const currentStageIndex = day <= 30 ? 0 : day <= 60 ? 1 : 2;
+  const currentStage = stages[currentStageIndex]!;
 
 
   return (
@@ -149,10 +153,10 @@ function Dashboard() {
       <header className="mb-10 flex items-start gap-4">
         <div className="min-w-0">
           <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-foreground">
-            Welcome to your AI Onboarding Tool, {name.split(" ")[0]}
+            {firstName ? t("dash.welcome", { name: firstName }) : t("dash.welcomeNoName")}
           </h1>
           <p className="mt-2 text-muted-foreground">
-            {greetingText} — everything you need for your first 90 days lives here.
+            {t("dash.intro", { greeting: t(greetingKey) })}
           </p>
           {role && (
             <div className="mt-3">
@@ -186,18 +190,22 @@ function Dashboard() {
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <span className="text-xl font-semibold leading-none">{day}</span>
-              <span className="text-[10px] text-muted-foreground mt-0.5">working days</span>
+              <span className="text-[10px] text-muted-foreground mt-0.5">{t("dash.workingDays")}</span>
             </div>
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-semibold">Your 30/60/90 journey</h2>
+            <h2 className="text-lg font-semibold">{t("dash.journey")}</h2>
             <p className="text-sm text-muted-foreground mt-1">
               {effectiveStart
-                ? `Working day ${day} of 90 · Week ${Math.floor(day / 5) + 1} · ${Math.round(progressPct)}% complete`
-                : "Add your start date in Settings to track your 90 days"}
+                ? t("dash.progress", {
+                    day,
+                    week: Math.floor(day / 5) + 1,
+                    pct: Math.round(progressPct),
+                  })
+                : t("dash.noStart")}
             </p>
             <span className="mt-2 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold" style={{ backgroundColor: "var(--gold-soft)", color: "var(--foreground)" }}>
-              Learn &amp; observe phase
+              {t("dash.phaseBadge", { phase: currentStage.sub })}
             </span>
           </div>
         </div>
@@ -250,19 +258,18 @@ function Dashboard() {
         </div>
 
         <p className="mt-8 text-sm text-muted-foreground">
-          You're in your <span className="font-medium text-foreground">Learn & observe</span> phase.
-          Focus on meeting your team and completing intro modules.
+          {t("dash.youreIn", { phase: currentStage.sub })} {currentStage.focus}
         </p>
 
         <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-border pt-6">
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              What you've accomplished
+              {t("dash.accomplished")}
             </h3>
             <ul className="mt-3 space-y-2">
               {accomplished.length === 0 && (
                 <li className="text-sm text-muted-foreground">
-                  Nothing ticked off yet — start with Week 1 in your learning plan.
+                  {t("dash.nothingTicked")}
                 </li>
               )}
               {accomplished.map((item) => (
@@ -270,7 +277,9 @@ function Dashboard() {
                   <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                   <span>
                     <span className="text-foreground/85">{shorten(item.task, 90)}</span>
-                    <span className="ml-1.5 text-xs text-muted-foreground">{item.phase}</span>
+                    <span className="ml-1.5 text-xs text-muted-foreground">
+                      {phaseLabel(item.phase, t)}
+                    </span>
                   </span>
                 </li>
               ))}
@@ -278,12 +287,12 @@ function Dashboard() {
           </div>
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Next steps
+              {t("dash.nextSteps")}
             </h3>
             <ul className="mt-3 space-y-2">
               {next.length === 0 && (
                 <li className="text-sm text-muted-foreground">
-                  You're all caught up — nice work.
+                  {t("dash.caughtUp")}
                 </li>
               )}
               {next.map((item) => (
@@ -291,7 +300,9 @@ function Dashboard() {
                   <CircleDot className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                   <span>
                     <span className="text-foreground/85">{shorten(item.task, 90)}</span>
-                    <span className="ml-1.5 text-xs text-muted-foreground">{item.phase}</span>
+                    <span className="ml-1.5 text-xs text-muted-foreground">
+                      {phaseLabel(item.phase, t)}
+                    </span>
                   </span>
                 </li>
               ))}
@@ -300,7 +311,7 @@ function Dashboard() {
               to="/learning-plan"
               className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
             >
-              Open your learning plan
+              {t("dash.openPlan")}
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
@@ -316,7 +327,7 @@ function Dashboard() {
 
       {/* Quick access */}
       <section>
-        <h2 className="text-lg font-semibold mb-4">Quick access</h2>
+        <h2 className="text-lg font-semibold mb-4">{t("dash.quickAccess")}</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {cards.map(({ to, title, desc, icon: Icon, bg, fg }) => (
             <Link
@@ -333,10 +344,10 @@ function Dashboard() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="font-semibold text-foreground">{title}</h3>
+                    <h3 className="font-semibold text-foreground">{t(title)}</h3>
                     <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
                   </div>
-                  <p className="mt-1 text-sm text-muted-foreground">{desc}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{t(desc)}</p>
                 </div>
               </div>
             </Link>

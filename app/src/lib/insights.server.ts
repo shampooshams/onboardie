@@ -17,7 +17,7 @@ export async function classifyQuestion(question: string): Promise<Topic | null> 
         messages: [
           {
             role: "system",
-            content: `Classify the new hire's onboarding question into exactly one category: ${TOPICS.join(", ")}. Reply with the category name only, nothing else.`,
+            content: `Classify the new hire's onboarding question into exactly one category: ${TOPICS.join(", ")}. The question may be in English or German. Reply with the category name only, exactly as written above in English, nothing else.`,
           },
           { role: "user", content: question },
         ],

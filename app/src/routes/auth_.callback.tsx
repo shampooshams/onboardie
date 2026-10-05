@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useT } from "@/lib/i18n";
 
 function safeNext(value: unknown): string {
   if (typeof value !== "string") return "/";
@@ -27,6 +28,7 @@ export const Route = createFileRoute("/auth_/callback")({
 function Callback() {
   const { next } = Route.useSearch();
   const [failed, setFailed] = useState(false);
+  const { t } = useT();
 
   useEffect(() => {
     let cancelled = false;
@@ -54,7 +56,7 @@ function Callback() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4">
       <p className="text-sm text-muted-foreground">
-        {failed ? "Sign-in did not complete. Please try again." : "Signing you in…"}
+        {failed ? t("auth.signInFailed") : t("auth.signingIn")}
       </p>
     </main>
   );

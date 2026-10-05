@@ -8,6 +8,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getCompanyInfo, joinCompanyByCode } from "@/lib/company.functions";
 import { usePreviewRole, usePreviewStartDate } from "@/lib/preview";
 import { useProfile } from "@/lib/profile";
+import { useT } from "@/lib/i18n";
+import { LanguageSwitch } from "@/components/language-switch";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
@@ -24,6 +26,7 @@ export const Route = createFileRoute("/_authenticated/settings")({
 });
 
 function SettingsPage() {
+  const { t } = useT();
   const { loading, signedIn, profile, role, reload } = useProfile();
   const { preview } = usePreviewRole();
   const isPreview = Boolean(preview);
@@ -73,7 +76,7 @@ function SettingsPage() {
     });
     setSaving(false);
     if (saveError) {
-      setError("We couldn't save your changes — please try again.");
+      setError(t("settings.saveFailed"));
       return;
     }
     setSaved(true);
@@ -87,41 +90,57 @@ function SettingsPage() {
   return (
     <AppLayout>
       <header className="mb-8">
-        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">Settings</h1>
+        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">{t("nav.settings")}</h1>
         <p className="mt-2 text-muted-foreground">
-          {isPreview
-            ? "Preview mode — set a start date to see how the 90-day journey would look."
-            : "Your profile details."}
+          {isPreview ? t("settings.previewSubtitle") : t("settings.subtitle")}
         </p>
       </header>
 
       <section className="mb-6 rounded-2xl bg-card border border-border p-6 shadow-sm">
         <div className="mb-5 flex items-center justify-between gap-4">
-          <h2 className="text-lg font-semibold">Profile</h2>
+          <h2 className="text-lg font-semibold">{t("settings.profile")}</h2>
           {role && !isPreview && (
             <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
-              {role === "manager" ? "Manager account" : "New hire account"}
+              {role === "manager" ? t("settings.managerAccount") : t("settings.newHireAccount")}
             </span>
           )}
         </div>
 
         {loading && !isPreview ? (
-          <p className="text-sm text-muted-foreground">Loading your profile…</p>
+          <p className="text-sm text-muted-foreground">{t("settings.loading")}</p>
         ) : !signedIn ? (
           <p className="text-sm text-muted-foreground">
-            You're not signed in.{" "}
+            {t("settings.notSignedIn")}{" "}
             <a href="/login" className="text-primary underline-offset-4 hover:underline">
-              Sign in
-            </a>{" "}
-            to manage your profile.
+              {t("settings.signIn")}
+            </a>
+            {t("settings.toManage")}
           </p>
         ) : (
           <>
             <div className="grid gap-4 md:grid-cols-2">
-               <Field label="Full name" value={fullName} onChange={setFullName} readOnly={isPreview} />
-               <Field label="Role" value={roleTitle} onChange={setRoleTitle} readOnly={isPreview} />
-               <Field label="Start date" type="date" value={startDate} onChange={setStartDate} />
-               <Field label="Email" value={profile?.email ?? ""} readOnly />
+              <Field
+                id="full-name"
+                label={t("auth.fullName")}
+                value={fullName}
+                onChange={setFullName}
+                readOnly={isPreview}
+              />
+              <Field
+                id="role"
+                label={t("settings.role")}
+                value={roleTitle}
+                onChange={setRoleTitle}
+                readOnly={isPreview}
+              />
+              <Field
+                id="start-date"
+                label={t("auth.startDate")}
+                type="date"
+                value={startDate}
+                onChange={setStartDate}
+              />
+              <Field id="email" label={t("auth.email")} value={profile?.email ?? ""} readOnly />
             </div>
 
              <div className="mt-6 flex items-center gap-3">
@@ -132,16 +151,26 @@ function SettingsPage() {
                 className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60 transition-opacity"
               >
                 {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                {saving ? "Saving…" : "Save"}
+                {saving ? t("settings.saving") : t("settings.save")}
               </button>
               {saved && (
                 <span className="inline-flex items-center gap-1.5 text-sm text-primary">
-                  <Check className="h-4 w-4" /> Saved
+                  <Check className="h-4 w-4" /> {t("settings.saved")}
                 </span>
               )}
              </div>
           </>
         )}
+      </section>
+
+      <section className="mb-6 rounded-2xl bg-card border border-border p-6 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold">{t("settings.language")}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t("settings.languageHint")}</p>
+          </div>
+          <LanguageSwitch />
+        </div>
       </section>
 
       {!isPreview && signedIn && <CompanyCard />}
@@ -156,6 +185,7 @@ function SettingsPage() {
  * whatever its email domain. Without a code, email-domain grouping stays in charge.
  */
 function CompanyCard() {
+  const { t } = useT();
   const fetchInfo = useServerFn(getCompanyInfo);
   const join = useServerFn(joinCompanyByCode);
   const queryClient = useQueryClient();
@@ -181,14 +211,12 @@ function CompanyCard() {
     setJoining(false);
     if (!result.ok) {
       setFailed(
-        result.error === "not_found"
-          ? "That code doesn't match any company — check it with whoever shared it."
-          : "We couldn't join that company right now — please try again.",
+        result.error === "not_found" ? t("settings.codeNotFound") : t("settings.joinFailed"),
       );
       return;
     }
     setCode("");
-    setMessage(`You're now part of ${result.companyName}.`);
+    setMessage(t("settings.joined", { company: result.companyName }));
     await refetch();
     await queryClient.invalidateQueries({ queryKey: ["live-content"] });
     await queryClient.invalidateQueries({ queryKey: ["published-roles"] });
@@ -198,21 +226,18 @@ function CompanyCard() {
     <section className="mb-6 rounded-2xl bg-card border border-border p-6 shadow-sm">
       <div className="mb-5 flex items-center gap-2">
         <Building2 className="h-4 w-4 text-primary" />
-        <h2 className="text-lg font-semibold">Company / Invite Code</h2>
+        <h2 className="text-lg font-semibold">{t("settings.company")}</h2>
       </div>
 
       {info?.companyName && (
         <p className="mb-4 text-sm text-muted-foreground">
-          You're currently in <span className="font-medium text-foreground">{info.companyName}</span>.
+          {t("settings.currentlyIn", { company: info.companyName })}
         </p>
       )}
 
       {info?.inviteCode && (
         <div className="mb-6 rounded-xl border border-border bg-muted/40 p-4">
-          <p className="text-xs font-medium text-muted-foreground mb-2">
-            Your company invite code — share it with your team so they join your company, whatever
-            their email address.
-          </p>
+          <p className="text-xs font-medium text-muted-foreground mb-2">{t("settings.yourCode")}</p>
           <div className="flex items-center gap-3">
             <code className="rounded-lg bg-background border border-border px-3 py-2 text-sm font-semibold tracking-wider">
               {info.inviteCode}
@@ -227,14 +252,14 @@ function CompanyCard() {
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:border-primary/40 transition-colors"
             >
               {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
-              {copied ? "Copied" : "Copy"}
+              {copied ? t("invite.copied") : t("invite.copy")}
             </button>
           </div>
         </div>
       )}
 
       <label htmlFor="invite-code" className="block text-xs font-medium text-muted-foreground mb-1.5">
-        Join a company with an invite code
+        {t("settings.joinLabel")}
       </label>
       <div className="flex flex-wrap items-center gap-3">
         <input
@@ -251,12 +276,10 @@ function CompanyCard() {
           className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-medium hover:border-primary/40 disabled:opacity-40 transition-colors"
         >
           {joining && <Loader2 className="h-4 w-4 animate-spin" />}
-          {joining ? "Joining…" : "Join company"}
+          {joining ? t("settings.joining") : t("settings.join")}
         </button>
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">
-        Leave this empty to stay grouped by your email address, as before.
-      </p>
+      <p className="mt-2 text-xs text-muted-foreground">{t("settings.joinHint")}</p>
       {message && (
         <p className="mt-3 inline-flex items-center gap-1.5 text-sm text-primary">
           <Check className="h-4 w-4" /> {message}
@@ -269,19 +292,21 @@ function CompanyCard() {
 
 
 function Field({
+  id: name,
   label,
   value,
   onChange,
   readOnly,
   type = "text",
 }: {
+  id: string;
   label: string;
   value: string;
   onChange?: (value: string) => void;
   readOnly?: boolean;
   type?: string;
 }) {
-  const id = "field-" + label.toLowerCase().replace(/[^a-z]+/g, "-");
+  const id = "field-" + name;
   return (
     <div>
       <label htmlFor={id} className="block text-xs font-medium text-muted-foreground mb-1.5">

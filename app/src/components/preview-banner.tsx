@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Eye, X } from "lucide-react";
 import { usePreviewRole } from "@/lib/preview";
+import { useT } from "@/lib/i18n";
 
 /**
  * Shown while a manager is viewing the New Hire pages as a specific published
@@ -9,16 +10,17 @@ import { usePreviewRole } from "@/lib/preview";
 export function PreviewBanner() {
   const { preview, stop } = usePreviewRole();
   const navigate = useNavigate();
+  const { t } = useT();
   if (!preview) return null;
 
   return (
     <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-manager/40 bg-manager/10 px-4 py-3 text-sm">
       <span className="flex items-center gap-2 font-medium text-manager">
         <Eye className="h-4 w-4" />
-        Previewing as a new hire
+        {t("preview.title")}
       </span>
       <span className="text-muted-foreground">
-        Showing live content for <strong className="text-foreground">{preview.role}</strong>
+        {t("preview.showing")} <strong className="text-foreground">{preview.role}</strong>
       </span>
       <button
         type="button"
@@ -29,7 +31,7 @@ export function PreviewBanner() {
         className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:border-manager/50 transition-colors"
       >
         <X className="h-3.5 w-3.5" />
-        Exit preview
+        {t("preview.exit")}
       </button>
     </div>
   );

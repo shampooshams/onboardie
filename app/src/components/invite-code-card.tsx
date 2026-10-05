@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { Building2, Check, Copy } from "lucide-react";
 import { getCompanyInfo, type CompanyInfo } from "@/lib/company.functions";
+import { useT } from "@/lib/i18n";
 
 /**
  * Small banner showing the manager's company invite code so it can be shared
@@ -11,6 +12,7 @@ import { getCompanyInfo, type CompanyInfo } from "@/lib/company.functions";
 export function InviteCodeCard() {
   const fetchInfo = useServerFn(getCompanyInfo);
   const [copied, setCopied] = useState(false);
+  const { t } = useT();
   const { data } = useQuery({
     queryKey: ["company-info"],
     queryFn: () => fetchInfo(),
@@ -26,12 +28,10 @@ export function InviteCodeCard() {
           <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <div>
             <h2 className="text-sm font-semibold">
-              Company invite code{info.companyName ? ` — ${info.companyName}` : ""}
+              {t("invite.title")}
+              {info.companyName ? ` — ${info.companyName}` : ""}
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Share this with your new hires so they join your company at sign-up, whatever their
-              email address.
-            </p>
+            <p className="mt-1 text-sm text-muted-foreground">{t("invite.body")}</p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-3">
@@ -52,7 +52,7 @@ export function InviteCodeCard() {
             ) : (
               <Copy className="h-3.5 w-3.5" />
             )}
-            {copied ? "Copied" : "Copy"}
+            {copied ? t("invite.copied") : t("invite.copy")}
           </button>
         </div>
       </div>

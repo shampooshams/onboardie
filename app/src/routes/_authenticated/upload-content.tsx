@@ -8,6 +8,7 @@ import { structureContent } from "@/lib/structure.functions";
 import { saveStructuredDraft } from "@/lib/structured-draft";
 import { saveCompanyDocs } from "@/lib/company-docs.functions";
 import { loadRoleDraft, saveRawRoleDraft, saveRoleDraft } from "@/lib/drafts.functions";
+import { useT } from "@/lib/i18n";
 
 type Scope = "role" | "company";
 type UploadedFile = { name: string; text: string; scope: Scope };
@@ -34,6 +35,7 @@ export const Route = createFileRoute("/_authenticated/upload-content")({
 const words = (text: string) => (text.trim() ? text.trim().split(/\s+/).length : 0);
 
 function UploadContentPage() {
+  const { t, lang } = useT();
   const navigate = useNavigate();
   const { draft: draftParam } = Route.useSearch();
   const [content, setContent] = useState("");
@@ -117,16 +119,14 @@ function UploadContentPage() {
       const saved = await runSaveRawDraft({ data: { role, content: combinedContent() } });
       if (!saved.ok) {
         setStructureError(
-          saved.error === "no_company"
-            ? "We couldn't tell which company your account belongs to — please contact us."
-            : "We couldn't save your draft — please try again.",
+          saved.error === "no_company" ? t("upload.noCompany") : t("upload.draftFailed"),
         );
         return;
       }
       setDraftSaved(true);
       setTimeout(() => navigate({ to: "/review-approve", search: {} }), 800);
     } catch {
-      setStructureError("We couldn't save your draft — please check your connection and try again.");
+      setStructureError(t("upload.draftOffline"));
     } finally {
       setSavingDraft(false);
     }
@@ -145,8 +145,8 @@ function UploadContentPage() {
       } catch (error) {
         setFileError(
           error instanceof ExtractionError
-            ? `${file.name}: ${error.message}`
-            : `${file.name}: we couldn't read that file — try pasting the text directly instead.`,
+            ? `${file.name}: ${t(error.key, error.vars)}`
+            : `${file.name}: ${t("upload.fileFailed")}`,
         );
       }
     }
@@ -162,7 +162,7 @@ function UploadContentPage() {
     setSubmitting(true);
     try {
       await storeCompanyWide();
-      const result = await runStructure({ data: { role, content: combinedContent() } });
+      const result = await runStructure({ data: { role, content: combinedContent(), lang } });
       if (!result.ok) {
         setStructureError(result.message);
         return;
@@ -173,9 +173,7 @@ function UploadContentPage() {
       else navigate({ to: "/review-approve" });
     } catch (error) {
       console.error("Structuring failed", error);
-      setStructureError(
-        "We couldn't reach the structuring service — please check your connection and try again.",
-      );
+      setStructureError(t("upload.structureOffline"));
     } finally {
       setSubmitting(false);
     }
@@ -187,17 +185,14 @@ function UploadContentPage() {
   return (
     <AppLayout>
       <header className="mb-8">
-        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">Upload Role Content</h1>
-        <p className="mt-2 text-muted-foreground max-w-2xl">
-          Paste your onboarding notes, doc, or any existing material — we'll structure it for you into a
-          Role Overview, Learning Plan, FAQs, tools, and contacts. You can add several files at once.
-        </p>
+        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">{t("nav.upload")}</h1>
+        <p className="mt-2 text-muted-foreground max-w-2xl">{t("upload.intro")}</p>
       </header>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="rounded-2xl bg-card border border-border p-6 shadow-sm">
           <label className="block text-sm font-medium mb-2">
-            Role <span className="text-destructive">*</span>
+            {t("upload.role")} <span className="text-destructive">*</span>
           </label>
           <input
             ref={roleInputRef}
@@ -210,16 +205,14 @@ function UploadContentPage() {
               "w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none transition-colors " +
               (roleError ? "border-destructive" : "border-border focus:border-primary/50")
             }
-            placeholder="Type the role title, e.g. Sales Development Representative"
+            placeholder={t("upload.rolePlaceholder")}
           />
           <p
             className={
               "mt-2 text-xs " + (roleError ? "text-destructive font-medium" : "text-muted-foreground")
             }
           >
-            {roleError
-              ? "Add the role title before structuring — new hires see content matched to their own role title."
-              : "New hires see the content for their own role title, so match it exactly."}
+            {roleError ? t("upload.roleMissing") : t("upload.roleHint")}
           </p>
         </div>
 
@@ -253,11 +246,11 @@ function UploadContentPage() {
               ) : (
                 <Upload className="h-4 w-4" />
               )}
-              {extracting ? "Reading your files..." : "Upload files"}
+              {extracting ? t("upload.reading") : t("upload.uploadFiles")}
             </button>
             <p className="text-sm text-muted-foreground">
-              PDF, Word (.docx), .txt or .rtf — several files at once, drag and drop works too, or{" "}
-              <span className="font-medium">paste your content below.</span>
+              {t("upload.fileTypes")}{" "}
+              <span className="font-medium">{t("upload.pasteBelow")}</span>
             </p>
           </div>
 
@@ -282,9 +275,11 @@ function UploadContentPage() {
                 >
                   <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
                   <span className="truncate font-medium">{file.name}</span>
-                  <span className="text-xs text-muted-foreground">{words(file.text)} words</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t("upload.words", { n: words(file.text) })}
+                  </span>
                   <select
-                    aria-label={`Scope for ${file.name}`}
+                    aria-label={t("upload.scopeFor", { name: file.name })}
                     value={file.scope}
                     onChange={(e) =>
                       setFiles((previous) =>
@@ -295,12 +290,12 @@ function UploadContentPage() {
                     }
                     className="ml-auto rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary"
                   >
-                    <option value="role">Role-specific</option>
-                    <option value="company">Company-wide</option>
+                    <option value="role">{t("upload.roleSpecific")}</option>
+                    <option value="company">{t("upload.companyWide")}</option>
                   </select>
                   <button
                     type="button"
-                    aria-label={`Remove ${file.name}`}
+                    aria-label={t("upload.remove", { name: file.name })}
                     onClick={() => setFiles((previous) => previous.filter((f) => f.name !== file.name))}
                     className="rounded p-1 hover:bg-primary/10"
                   >
@@ -312,10 +307,7 @@ function UploadContentPage() {
           )}
 
           {files.length > 0 && (
-            <p className="mt-3 text-xs text-muted-foreground">
-              Company-wide files (e.g. an HR policy) are also saved for the whole company, so the AI
-              Coach can use them for other roles too. Role-specific files stay with this role.
-            </p>
+            <p className="mt-3 text-xs text-muted-foreground">{t("upload.scopeHint")}</p>
           )}
 
           {fileError && (
@@ -330,15 +322,17 @@ function UploadContentPage() {
           <div className="flex items-center justify-between border-b border-border px-5 py-3">
             <div className="flex items-center gap-2 text-sm font-medium">
               <FileText className="h-4 w-4 text-primary" />
-              Onboarding material
+              {t("upload.material")}
             </div>
-            <span className="text-xs text-muted-foreground">{totalWords} words in total</span>
+            <span className="text-xs text-muted-foreground">
+              {t("upload.totalWords", { n: totalWords })}
+            </span>
           </div>
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
             rows={16}
-            placeholder="Paste your onboarding notes, docs, checklists, playbooks — anything you already have. We'll do the structuring."
+            placeholder={t("upload.textPlaceholder")}
             className="w-full resize-y bg-transparent px-5 py-4 text-sm outline-none placeholder:text-muted-foreground min-h-[280px]"
           />
         </div>
@@ -353,15 +347,15 @@ function UploadContentPage() {
         {draftSaved && (
           <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm">
             <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-            <span>Saved as a draft — find it in Review &amp; Approve.</span>
+            <span>{t("upload.draftSaved")}</span>
           </div>
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-4">
           <p className="text-xs text-muted-foreground">
-            Nothing is published until you review and approve.
+            {t("upload.nothingPublished")}
             <br />
-            Your draft will be saved in Review &amp; Approve.
+            {t("upload.draftWhere")}
           </p>
           <div className="flex items-center gap-3">
             <button
@@ -371,7 +365,7 @@ function UploadContentPage() {
               className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-medium hover:border-primary/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {savingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {savingDraft ? "Saving draft..." : "Save as Draft"}
+              {savingDraft ? t("upload.savingDraft") : t("upload.saveDraft")}
             </button>
             <button
               type="submit"
@@ -379,7 +373,7 @@ function UploadContentPage() {
               className="inline-flex items-center gap-2 rounded-xl bg-primary text-primary-foreground px-5 py-2.5 text-sm font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity shadow-sm"
             >
               <Sparkles className="h-4 w-4" />
-              {submitting ? "Structuring your content..." : "Structure This"}
+              {submitting ? t("upload.structuring") : t("upload.structure")}
             </button>
           </div>
         </div>
