@@ -65,7 +65,35 @@ export function TeamCard() {
             <div className="border-b border-border px-5 py-3 text-xs text-muted-foreground">
               {t("team.summary", { people: members.length, hires: hires.length, unmatched })}
             </div>
-            <div className="overflow-x-auto">
+            {/* Phones: one card per person. */}
+            <ul className="divide-y divide-border md:hidden">
+              {members.map((m) => (
+                <li key={m.id} className="px-4 py-3.5">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                      {initialsOf(m.name || m.email) || "?"}
+                    </span>
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <div>
+                        <div className="font-medium truncate">{m.name || m.email}</div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {m.accountType === "manager" ? t("team.manager") : t("team.newHire")}
+                          {" · "}
+                          {m.jobTitle || t("team.noTitle")}
+                        </div>
+                      </div>
+                      {m.accountType === "new_hire" && <ContentBadge member={m} />}
+                      <div className="text-xs text-muted-foreground">
+                        {m.accountType === "new_hire" ? `${progress(m)} · ` : ""}
+                        {t("team.colJoined")} {formatDate(m.joinedAt)}
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {/* Larger screens: the full table. */}
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground">
@@ -102,25 +130,8 @@ export function TeamCard() {
                       <td className="px-3 py-3">
                         {m.accountType === "manager" ? (
                           <span className="text-muted-foreground">{t("team.notApplicable")}</span>
-                        ) : m.matchedRole ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                            <CheckCircle2 className="h-3 w-3 shrink-0" />
-                            {t("team.matched", { role: m.matchedRole })}
-                          </span>
                         ) : (
-                          <span
-                            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
-                            style={{
-                              backgroundColor: "var(--coral-soft)",
-                              color: "var(--foreground)",
-                            }}
-                          >
-                            <AlertTriangle
-                              className="h-3 w-3 shrink-0"
-                              style={{ color: "var(--coral)" }}
-                            />
-                            {t("team.noMatch")}
-                          </span>
+                          <ContentBadge member={m} />
                         )}
                       </td>
                       <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap">
@@ -143,5 +154,24 @@ export function TeamCard() {
         )}
       </div>
     </section>
+  );
+}
+
+/** Whether a new hire's job title maps to published content. */
+function ContentBadge({ member }: { member: TeamMember }) {
+  const { t } = useT();
+  return member.matchedRole ? (
+    <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+      <CheckCircle2 className="h-3 w-3 shrink-0" />
+      {t("team.matched", { role: member.matchedRole })}
+    </span>
+  ) : (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+      style={{ backgroundColor: "var(--coral-soft)", color: "var(--foreground)" }}
+    >
+      <AlertTriangle className="h-3 w-3 shrink-0" style={{ color: "var(--coral)" }} />
+      {t("team.noMatch")}
+    </span>
   );
 }

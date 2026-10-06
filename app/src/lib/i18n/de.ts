@@ -463,4 +463,8 @@ export const de: Record<MessageKey, string> = {
   "team.notApplicable": "—",
   // Team overview access
   "team.notManager": "Nur Konten von Führungskräften können die Teamübersicht sehen.",
+  // Mobile navigation
+  "nav.openMenu": "Menü öffnen",
+  "nav.menu": "Menü",
+  "nav.menuDescription": "Seiten, Sprache und Konto",
 };

@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Sparkles,
@@ -15,12 +15,14 @@ import {
   ShieldCheck,
   LogOut,
   Loader2,
+  Menu,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile, initialsOf } from "@/lib/profile";
 import markUrl from "@/assets/onboardie-mark.png";
 import { LANG_STORAGE_KEY, useT, type MessageKey } from "@/lib/i18n";
 import { LanguageSwitch } from "./language-switch";
+import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "./ui/sheet";
 
 const newHireNav = [
   { to: "/", label: "nav.dashboard", icon: LayoutDashboard },
@@ -41,7 +43,8 @@ const managerNav = [
 
 const managerPaths = managerNav.map((i) => i.to as string);
 
-export function AppSidebar() {
+/** Logo, portal switch, navigation, language and account row - shared by desktop and phone. */
+function SidebarContents() {
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   const { profile } = useProfile();
   const [signingOut, setSigningOut] = useState(false);
@@ -101,7 +104,7 @@ export function AppSidebar() {
   };
 
   return (
-    <aside className="hidden md:flex w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground min-h-screen sticky top-0">
+    <>
       <div className="px-6 py-6">
         <div className="flex items-center gap-2.5">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-card p-1.5">
@@ -187,6 +190,55 @@ export function AppSidebar() {
           </button>
         </div>
       </div>
+    </>
+  );
+}
+
+/** Desktop: a fixed column on the left. */
+export function AppSidebar() {
+  return (
+    <aside className="hidden md:flex w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground h-screen sticky top-0">
+      <SidebarContents />
     </aside>
+  );
+}
+
+/** Phones and small tablets: a top bar whose menu button slides the same sidebar in. */
+export function MobileNav() {
+  const { t } = useT();
+  const pathname = useRouterState({ select: (r) => r.location.pathname });
+  const [open, setOpen] = useState(false);
+
+  // Close the menu once a link has navigated.
+  useEffect(() => setOpen(false), [pathname]);
+
+  return (
+    <header className="md:hidden sticky top-0 z-30 flex h-14 items-center justify-between gap-3 bg-sidebar px-4 text-sidebar-foreground">
+      <Link to="/" className="flex items-center gap-2">
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-card p-1">
+          <img src={markUrl} alt="" className="h-full w-full object-contain" />
+        </span>
+        <span className="text-base font-semibold tracking-tight">Onboardie</span>
+      </Link>
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetTrigger asChild>
+          <button
+            type="button"
+            aria-label={t("nav.openMenu")}
+            className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-sidebar-accent"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        </SheetTrigger>
+        <SheetContent
+          side="left"
+          className="flex w-72 flex-col gap-0 overflow-y-auto border-sidebar-border bg-sidebar p-0 text-sidebar-foreground"
+        >
+          <SheetTitle className="sr-only">{t("nav.menu")}</SheetTitle>
+          <SheetDescription className="sr-only">{t("nav.menuDescription")}</SheetDescription>
+          <SidebarContents />
+        </SheetContent>
+      </Sheet>
+    </header>
   );
 }
