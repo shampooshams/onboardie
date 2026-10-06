@@ -87,7 +87,8 @@ function AiCoachPage() {
 
   return (
     <AppLayout>
-      <div className="flex flex-col h-[calc(100vh-6rem)]">
+      {/* Fills the screen below the phone top bar (3.5rem + 3rem padding) or the desktop padding. */}
+      <div className="flex flex-col h-[calc(100dvh-6.5rem)] md:h-[calc(100dvh-6rem)]">
         {/* Header */}
         <header className="flex items-center gap-4 pb-6 border-b border-border">
           <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">

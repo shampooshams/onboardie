@@ -434,6 +434,10 @@ export const en = {
   "team.notApplicable": "—",
   // Team overview access
   "team.notManager": "Only manager accounts can see the team overview.",
+  // Mobile navigation
+  "nav.openMenu": "Open menu",
+  "nav.menu": "Menu",
+  "nav.menuDescription": "Pages, language and account",
 } as const;
 
 export type MessageKey = keyof typeof en;
