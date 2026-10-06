@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { langFrom, translate, type Lang } from "./i18n/translate";
+import { findRoleFor } from "./role-match";
 
 const SYSTEM_PROMPT = `You are an onboarding coach for new hires at a company. Your job is to help with specific tasks related to their role — tool and system usage, processes, day-to-day work, and knowing who to contact. Only answer using the company content provided to you — do not use general knowledge or make anything up.
 
@@ -108,13 +109,8 @@ export const askCoach = createServerFn({ method: "POST" })
             .eq("id", context.userId)
             .maybeSingle();
           const roleTitle = (profileRow?.role_title ?? "").trim();
-          const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, "");
           const match = roleTitle
-            ? companyRows.find((r) => {
-                const a = norm(r.role);
-                const b = norm(roleTitle);
-                return !!a && !!b && (a === b || a.includes(b) || b.includes(a));
-              })
+            ? findRoleFor(companyRows, roleTitle, (r) => r.role)
             : companyRows[0];
           if (match) {
             primaryRole = match.role;

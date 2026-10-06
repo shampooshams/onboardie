@@ -7,6 +7,7 @@ import { AppLayout } from "@/components/app-layout";
 import { QuestionTopicsCard } from "@/components/question-topics-card";
 import { CompanyUpdateEditor } from "@/components/company-update-editor";
 import { InviteCodeCard } from "@/components/invite-code-card";
+import { TeamCard } from "@/components/team-card";
 import { useT } from "@/lib/i18n";
 
 export const Route = createFileRoute("/_authenticated/manager")({
@@ -20,12 +21,6 @@ export const Route = createFileRoute("/_authenticated/manager")({
   }),
   component: ManagerDashboard,
 });
-
-const HIRES = [
-  { name: "Alex Weber", role: "Sales Development Representative", day: 14, phase: "dash.stage1" },
-  { name: "Marie Schulz", role: "Sales Development Representative", day: 42, phase: "dash.stage2" },
-  { name: "David Klein", role: "Account Executive", day: 68, phase: "dash.stage3" },
-] as const;
 
 function ManagerDashboard() {
   const { t } = useT();
@@ -55,6 +50,8 @@ function ManagerDashboard() {
       </header>
 
       <InviteCodeCard />
+
+      <TeamCard />
 
       <section className="mb-10">
         <h2 className="text-lg font-semibold mb-1">{t("mgr.roles")}</h2>
@@ -120,41 +117,6 @@ function ManagerDashboard() {
       <section className="mb-10 grid gap-4 md:grid-cols-2">
         <QuestionTopicsCard />
         <CompanyUpdateEditor />
-      </section>
-
-      <section>
-        <h2 className="text-lg font-semibold mb-4">{t("mgr.hires")}</h2>
-        <div className="rounded-2xl bg-card border border-border shadow-sm overflow-hidden">
-          <div className="divide-y divide-border">
-            {HIRES.map((h) => {
-              const pct = Math.round((h.day / 90) * 100);
-              return (
-                <div key={h.name} className="p-5 flex flex-col md:flex-row md:items-center gap-4">
-                  <div className="flex items-center gap-3 md:w-64">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-sm">
-                      {h.name.split(" ").map((n) => n[0]).join("")}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="font-medium text-sm truncate">{h.name}</div>
-                      <div className="text-xs text-muted-foreground truncate">{h.role}</div>
-                    </div>
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-baseline justify-between mb-1.5">
-                      <span className="text-xs text-muted-foreground">
-                        {t("mgr.hireProgress", { day: h.day, phase: t(h.phase) })}
-                      </span>
-                      <span className="text-xs font-medium">{pct}%</span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                      <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
       </section>
     </AppLayout>
   );
