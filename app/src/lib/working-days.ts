@@ -142,3 +142,14 @@ export function monthGrid(month: Date, start: Date, today: Date): (CalendarCell 
 }
 
 export const WEEKDAY_LABELS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"] as const;
+
+/** Working days completed since a YYYY-MM-DD start date, capped at 90; 0 before the start or without one. */
+export function workingDaysSinceStart(startDate: string | null | undefined): number {
+  if (!startDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return 0;
+  const [y, m, d] = startDate.split("-").map(Number);
+  const start = new Date(Date.UTC(y!, m! - 1, d!));
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  if (today < start) return 0;
+  return Math.max(0, Math.min(90, workingDaysBetween(start, today)));
+}

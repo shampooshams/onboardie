@@ -5,7 +5,8 @@ import { useEffect, useState } from "react";
 import { Loader2, Check, Copy, Building2 } from "lucide-react";
 import { AppLayout } from "@/components/app-layout";
 import { supabase } from "@/integrations/supabase/client";
-import { getCompanyInfo, joinCompanyByCode } from "@/lib/company.functions";
+import { getCompanyInfo, joinCompanyByCode, listCompanyRoles } from "@/lib/company.functions";
+import { RolePicker } from "@/components/role-picker";
 import { usePreviewRole, usePreviewStartDate } from "@/lib/preview";
 import { useProfile } from "@/lib/profile";
 import { useT } from "@/lib/i18n";
@@ -32,8 +33,16 @@ function SettingsPage() {
   const isPreview = Boolean(preview);
   const { startDate: previewStart, save: savePreviewStart } = usePreviewStartDate(preview?.id);
   const queryClient = useQueryClient();
+  const fetchRoles = useServerFn(listCompanyRoles);
+  const { data: rolesData } = useQuery({
+    queryKey: ["company-roles"],
+    queryFn: () => fetchRoles(),
+    staleTime: 60_000,
+  });
+  // New hires pick from the published roles; managers and previews keep a plain field.
+  const roleOptions =
+    !isPreview && role !== "manager" && rolesData?.ok ? rolesData.roles : [];
 
-  
   const [fullName, setFullName] = useState("");
   const [roleTitle, setRoleTitle] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -126,13 +135,31 @@ function SettingsPage() {
                 onChange={setFullName}
                 readOnly={isPreview}
               />
-              <Field
-                id="role"
-                label={t("settings.role")}
-                value={roleTitle}
-                onChange={setRoleTitle}
-                readOnly={isPreview}
-              />
+              {roleOptions.length > 0 ? (
+                <div>
+                  <label
+                    htmlFor="field-role"
+                    className="block text-xs font-medium text-muted-foreground mb-1.5"
+                  >
+                    {t("settings.role")}
+                  </label>
+                  <RolePicker
+                    id="field-role"
+                    roles={roleOptions}
+                    value={roleTitle}
+                    onChange={setRoleTitle}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+              ) : (
+                <Field
+                  id="role"
+                  label={t("settings.role")}
+                  value={roleTitle}
+                  onChange={setRoleTitle}
+                  readOnly={isPreview}
+                />
+              )}
               <Field
                 id="start-date"
                 label={t("auth.startDate")}
@@ -220,6 +247,7 @@ function CompanyCard() {
     await refetch();
     await queryClient.invalidateQueries({ queryKey: ["live-content"] });
     await queryClient.invalidateQueries({ queryKey: ["published-roles"] });
+    await queryClient.invalidateQueries({ queryKey: ["company-roles"] });
   }
 
   return (

@@ -59,3 +59,63 @@ export const joinCompanyByCode = createServerFn({ method: "POST" })
       return { ok: false, error: "db" };
     }
   });
+
+export type InviteLookupResult =
+  | { ok: true; companyName: string; roles: string[] }
+  | { ok: false; error: "not_found" | "db" };
+
+/**
+ * Sign-up helper: the company name and published role names behind an invite
+ * code, so a new hire can confirm the company and pick their role. Works before
+ * sign-in; codes are random (one in ~10⁹), so a code is the permission to see this.
+ */
+export const lookupInviteCode = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => {
+    const data = input as { code?: unknown };
+    const code = typeof data?.code === "string" ? data.code.replace(/\s+/g, "").toUpperCase() : "";
+    if (!/^ONB-[A-Z0-9]{6}$/.test(code)) throw new Error("invalid invite code");
+    return { code };
+  })
+  .handler(async ({ data }): Promise<InviteLookupResult> => {
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: company, error } = await supabaseAdmin
+        .from("companies")
+        .select("id, name")
+        .eq("invite_code", data.code)
+        .maybeSingle();
+      if (error) throw error;
+      if (!company) return { ok: false, error: "not_found" };
+      const { data: rows, error: rolesError } = await supabaseAdmin
+        .from("role_content")
+        .select("role")
+        .eq("company_id", company.id)
+        .order("role");
+      if (rolesError) throw rolesError;
+      return { ok: true, companyName: company.name, roles: (rows ?? []).map((r) => r.role) };
+    } catch (error) {
+      console.error("Looking up invite code failed", error);
+      return { ok: false, error: "db" };
+    }
+  });
+
+/** Published role names in the caller's own company, for the role picker in Settings. */
+export const listCompanyRoles = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<{ ok: true; roles: string[] } | { ok: false }> => {
+    try {
+      const { companyIdFor } = await import("./company.server");
+      const companyId = await companyIdFor(context.supabase, context.userId);
+      if (!companyId) return { ok: true, roles: [] };
+      const { data, error } = await context.supabase
+        .from("role_content")
+        .select("role")
+        .eq("company_id", companyId)
+        .order("role");
+      if (error) throw error;
+      return { ok: true, roles: (data ?? []).map((r) => r.role) };
+    } catch (error) {
+      console.error("Listing company roles failed", error);
+      return { ok: false };
+    }
+  });

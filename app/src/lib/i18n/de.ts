@@ -294,8 +294,6 @@ export const de: Record<MessageKey, string> = {
   "mgr.companyContent": "Inhalte Ihres Unternehmens",
   "mgr.mockupRole": "Beispielrolle",
   "mgr.exampleContent": "Beispielinhalt · nur ansehen",
-  "mgr.hires": "Neue Mitarbeitende im Onboarding (Demodaten)",
-  "mgr.hireProgress": "Tag {day} von 90 · {phase}",
   // File reading errors
   "file.empty":
     "Diese Datei scheint leer zu sein. Wählen Sie eine andere Datei oder fügen Sie den Text unten ein.",
@@ -431,4 +429,38 @@ export const de: Record<MessageKey, string> = {
   "manage.view": "Ansehen",
   // AI setup details
   "ai.detail": "Technische Details für Ihre Administration: {detail}",
+  // Role picker
+  "rolePicker.choose": "Rolle auswählen …",
+  "rolePicker.other": "Meine Rolle ist nicht aufgeführt – selbst eingeben",
+  "rolePicker.typePlaceholder": "Berufsbezeichnung eingeben",
+  "rolePicker.hint": "Das sind die Rollen, die Ihr Unternehmen veröffentlicht hat. Wählen Sie Ihre aus, um die passenden Onboarding-Inhalte zu sehen.",
+  "rolePicker.otherHint": "Diese Rolle wurde noch nicht veröffentlicht. Sie sehen die Inhalte, sobald Ihre Führungskraft eine Rolle mit diesem Namen veröffentlicht.",
+  // Sign-up invite code check
+  "invite.checking": "Code wird geprüft …",
+  "invite.joining": "Sie treten {company} bei.",
+  "invite.notFound": "Dieser Code wurde nicht gefunden – bitte prüfen Sie ihn mit Ihrer Führungskraft.",
+  // Team overview (Manager Dashboard)
+  "team.title": "Ihr Team",
+  "team.subtitle": "Alle, die sich in Ihrem Unternehmen registriert haben, und welche veröffentlichte Rolle neue Mitarbeitende sehen.",
+  "team.summary": "{people} Personen · {hires} neue Mitarbeitende · {unmatched} ohne passende Inhalte",
+  "team.loading": "Ihr Team wird geladen …",
+  "team.error": "Ihr Team konnte gerade nicht geladen werden. Bitte versuchen Sie es in Kürze erneut.",
+  "team.empty": "Bisher hat sich noch niemand registriert. Geben Sie Ihren Einladungscode oben an neue Mitarbeitende weiter.",
+  "team.colPerson": "Person",
+  "team.colJobTitle": "Berufsbezeichnung",
+  "team.colContent": "Onboarding-Inhalte",
+  "team.colProgress": "Fortschritt",
+  "team.colJoined": "Registriert",
+  "team.manager": "Führungskraft",
+  "team.newHire": "Neu im Team",
+  "team.matched": "Sieht „{role}“",
+  "team.noMatch": "Keine passenden Inhalte",
+  "team.noTitle": "Keine Berufsbezeichnung",
+  "team.noStart": "Kein Startdatum",
+  "team.notStarted": "Beginnt am {date}",
+  "team.dayOf": "Tag {day} von 90 · {phase}",
+  "team.mismatchHint": "Personen ohne passende Inhalte sehen leere Seiten. Veröffentlichen Sie eine Rolle mit ihrer Berufsbezeichnung oder bitten Sie sie, ihre Rolle in den Einstellungen auszuwählen.",
+  "team.notApplicable": "—",
+  // Team overview access
+  "team.notManager": "Nur Konten von Führungskräften können die Teamübersicht sehen.",
 };

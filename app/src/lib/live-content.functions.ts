@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Sections } from "./notion-publish.server";
+import { findRoleFor } from "./role-match";
 
 export type LiveContentResult =
   | {
@@ -13,16 +14,6 @@ export type LiveContentResult =
   | { ok: false; error: "notion" };
 
 const KEYS = ["overview", "plan", "faq", "tools", "contacts"] as const;
-
-const norm = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "");
-
-/** Loose job-title match so "Front End Engineer" finds "Front-End Engineer". */
-function matches(role: string, roleTitle: string): boolean {
-  const a = norm(role);
-  const b = norm(roleTitle);
-  if (!a || !b) return false;
-  return a === b || a.includes(b) || b.includes(a);
-}
 
 function normalize(raw: Record<string, unknown>): Sections {
   const sections = {} as Sections;
@@ -64,7 +55,7 @@ export const getLiveContent = createServerFn({ method: "GET" })
         // Only the hire's own role may be shown. Without a title match we must not
         // fall back to another role's content — that reads as "stuck on the old role".
         const match = roleTitle
-          ? rows.find((r) => matches(r.role, roleTitle))
+          ? findRoleFor(rows, roleTitle, (r) => r.role)
           : rows[0];
         if (match) {
           return {
@@ -82,7 +73,7 @@ export const getLiveContent = createServerFn({ method: "GET" })
       if (roles.length === 0)
         return { ok: true, role: roleTitle || null, sections: null, updatedAt: null, isMockup: false };
       const sorted = [...roles].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      const chosen = roleTitle ? sorted.find((r) => matches(r.role, roleTitle)) : sorted[0];
+      const chosen = roleTitle ? findRoleFor(sorted, roleTitle, (r) => r.role) : sorted[0];
       if (!chosen)
         return { ok: true, role: roleTitle || null, sections: null, updatedAt: null, isMockup: false };
       const sections = await readRoleContent(chosen.role);

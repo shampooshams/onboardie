@@ -275,8 +275,6 @@ export const en = {
   "mgr.companyContent": "Your company's content",
   "mgr.mockupRole": "Mockup role",
   "mgr.exampleContent": "Example content · view only",
-  "mgr.hires": "New hires onboarding (demo data)",
-  "mgr.hireProgress": "Day {day} of 90 · {phase}",
   // File reading errors
   "file.empty": "That file looks empty — pick another file or paste the text below.",
   "file.tooLarge": "That file is larger than 25 MB — try a smaller file, or paste the text below.",
@@ -402,6 +400,40 @@ export const en = {
   "manage.view": "View",
   // AI setup details
   "ai.detail": "Technical detail for your admin: {detail}",
+  // Role picker
+  "rolePicker.choose": "Choose your role…",
+  "rolePicker.other": "My role isn't listed — type it",
+  "rolePicker.typePlaceholder": "Type your job title",
+  "rolePicker.hint": "These are the roles your company has published. Pick yours to see its onboarding content.",
+  "rolePicker.otherHint": "Your manager hasn't published this role yet. You'll see its content as soon as they publish a role with this name.",
+  // Sign-up invite code check
+  "invite.checking": "Checking code…",
+  "invite.joining": "You'll join {company}.",
+  "invite.notFound": "We couldn't find this code — check it with your manager.",
+  // Team overview (Manager Dashboard)
+  "team.title": "Your team",
+  "team.subtitle": "Everyone who has signed up in your company, and which published role each new hire sees.",
+  "team.summary": "{people} people · {hires} new hires · {unmatched} without matching content",
+  "team.loading": "Loading your team…",
+  "team.error": "We couldn't load your team right now — please try again shortly.",
+  "team.empty": "Nobody has signed up yet. Share your company invite code above with your new hires.",
+  "team.colPerson": "Person",
+  "team.colJobTitle": "Job title",
+  "team.colContent": "Onboarding content",
+  "team.colProgress": "Progress",
+  "team.colJoined": "Signed up",
+  "team.manager": "Manager",
+  "team.newHire": "New hire",
+  "team.matched": "Sees “{role}”",
+  "team.noMatch": "No matching content",
+  "team.noTitle": "No job title",
+  "team.noStart": "No start date",
+  "team.notStarted": "Starts {date}",
+  "team.dayOf": "Day {day} of 90 · {phase}",
+  "team.mismatchHint": "Someone without matching content sees empty pages. Publish a role with their job title, or ask them to pick their role in Settings.",
+  "team.notApplicable": "—",
+  // Team overview access
+  "team.notManager": "Only manager accounts can see the team overview.",
 } as const;
 
 export type MessageKey = keyof typeof en;

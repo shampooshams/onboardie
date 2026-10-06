@@ -1,13 +1,26 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { LanguageSwitch } from "@/components/language-switch";
 import { useT } from "@/lib/i18n";
 import { authErrorKey } from "@/lib/i18n/auth-errors";
+import { lookupInviteCode } from "@/lib/company.functions";
+import { RolePicker } from "@/components/role-picker";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
+/** Same look as the shadcn Input, for the role list and its free-text field. */
+const FIELD_CLASS =
+  "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm";
+
+const INVITE_CODE = /^ONB-[A-Z0-9]{6}$/;
+
+type InviteState =
+  | { status: "idle" | "checking" | "not_found" }
+  | { status: "found"; companyName: string; roles: string[] };
 
 function safeNext(value: unknown): string {
   if (typeof value !== "string") return "/";
@@ -53,6 +66,36 @@ function SignupPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [invite, setInvite] = useState<InviteState>({ status: "idle" });
+  const lookup = useServerFn(lookupInviteCode);
+
+  // Once a complete code is typed, show which company it belongs to and offer
+  // that company's published roles as the job-title list.
+  useEffect(() => {
+    const code = inviteCode.replace(/\s+/g, "");
+    if (!INVITE_CODE.test(code)) {
+      setInvite({ status: "idle" });
+      return;
+    }
+    let active = true;
+    setInvite({ status: "checking" });
+    const timer = setTimeout(() => {
+      lookup({ data: { code } })
+        .then((result) => {
+          if (!active) return;
+          setInvite(
+            result.ok
+              ? { status: "found", companyName: result.companyName, roles: result.roles }
+              : { status: result.error === "not_found" ? "not_found" : "idle" },
+          );
+        })
+        .catch(() => active && setInvite({ status: "idle" }));
+    }, 400);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [inviteCode, lookup]);
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -109,16 +152,6 @@ function SignupPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="roleTitle">{t("auth.jobTitle")}</Label>
-            <Input
-              id="roleTitle"
-              required
-              placeholder="Sales Development Representative"
-              value={roleTitle}
-              onChange={(e) => setRoleTitle(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
             <Label>{t("auth.iAm")}</Label>
             <div className="grid grid-cols-2 gap-2">
               {(
@@ -144,19 +177,6 @@ function SignupPage() {
               ))}
             </div>
           </div>
-          {appRole === "new_hire" && (
-            <div className="space-y-2">
-              <Label htmlFor="startDate">{t("auth.startDate")}</Label>
-              <Input
-                id="startDate"
-                type="date"
-                required
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">{t("auth.startDateHint")}</p>
-            </div>
-          )}
           <div className="space-y-2">
             <Label htmlFor="email">{t("auth.email")}</Label>
             <Input
@@ -176,8 +196,46 @@ function SignupPage() {
               value={inviteCode}
               onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
             />
-            <p className="text-xs text-muted-foreground">{t("auth.inviteHint")}</p>
+            {invite.status === "checking" && (
+              <p className="text-xs text-muted-foreground">{t("invite.checking")}</p>
+            )}
+            {invite.status === "found" && (
+              <p className="text-xs font-medium text-primary">
+                {t("invite.joining", { company: invite.companyName })}
+              </p>
+            )}
+            {invite.status === "not_found" && (
+              <p className="text-xs text-destructive">{t("invite.notFound")}</p>
+            )}
+            {invite.status === "idle" && (
+              <p className="text-xs text-muted-foreground">{t("auth.inviteHint")}</p>
+            )}
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="roleTitle">{t("auth.jobTitle")}</Label>
+            <RolePicker
+              id="roleTitle"
+              required
+              roles={appRole === "new_hire" && invite.status === "found" ? invite.roles : []}
+              placeholder="Sales Development Representative"
+              value={roleTitle}
+              onChange={setRoleTitle}
+              className={FIELD_CLASS}
+            />
+          </div>
+          {appRole === "new_hire" && (
+            <div className="space-y-2">
+              <Label htmlFor="startDate">{t("auth.startDate")}</Label>
+              <Input
+                id="startDate"
+                type="date"
+                required
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">{t("auth.startDateHint")}</p>
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="password">{t("auth.password")}</Label>
             <Input

@@ -17,7 +17,7 @@ import { groupPlan, shorten, useLiveContent } from "@/lib/live-content";
 import { loadPlanDone } from "@/lib/plan-progress";
 import { usePreviewStartDate } from "@/lib/preview";
 import { useProfile } from "@/lib/profile";
-import { workingDaysBetween } from "@/lib/working-days";
+import { workingDaysSinceStart } from "@/lib/working-days";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { phaseLabel } from "@/lib/i18n/phase";
 
@@ -35,17 +35,6 @@ export const Route = createFileRoute("/_authenticated/")({
   }),
   component: Dashboard,
 });
-
-/** Working days completed since the hire's start date; 0 until a start date exists. */
-function workingDaysSinceStart(startDate: string | null | undefined): number {
-  if (!startDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return 0;
-  const [y, m, d] = startDate.split("-").map(Number);
-  const start = new Date(Date.UTC(y!, m! - 1, d!));
-  const now = new Date();
-  const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-  if (today < start) return 0;
-  return Math.max(0, Math.min(90, workingDaysBetween(start, today)));
-}
 
 const cards = [
   {
