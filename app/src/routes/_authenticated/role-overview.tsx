@@ -220,7 +220,7 @@ function RoleOverviewPage() {
                   <div key={group.id}>
                     <div className="mb-3 flex items-center gap-2">
                       <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        {t(group.label)}
+                        {group.title ?? t(group.label)}
                       </h3>
                       <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                         {group.items.length}
