@@ -151,13 +151,21 @@ export function dedupeEntries<T extends { label: string; detail: string; meta: L
   return [...byKey.values()];
 }
 
-/** Splits a "Question? — Answer" line, tolerating a missing dash. */
-export function splitQa(line: string): { q: string; a: string } {
+export type QaItem = { q: string; a: string; topic?: string };
+
+/**
+ * Splits a "[Topic] Question? — Answer" line, tolerating a missing dash. The
+ * topic is the heading the source document filed the question under.
+ */
+export function splitQa(raw: string): QaItem {
+  const tagged = /^\s*\[([^\]]{1,80})\]\s*(.+)$/.exec(raw);
+  const topic = tagged?.[1].trim() || undefined;
+  const line = tagged ? tagged[2] : raw;
   const { label, detail } = splitLine(line);
-  if (detail) return { q: label, a: detail };
+  if (detail) return { q: label, a: detail, topic };
   const idx = line.indexOf("?");
-  if (idx > 0) return { q: line.slice(0, idx + 1).trim(), a: line.slice(idx + 1).trim() };
-  return { q: line.trim(), a: "" };
+  if (idx > 0) return { q: line.slice(0, idx + 1).trim(), a: line.slice(idx + 1).trim(), topic };
+  return { q: line.trim(), a: "", topic };
 }
 
 export type PlanPhase = { title: string; tasks: string[] };
@@ -182,6 +190,8 @@ export function groupPlan(lines: string[]): PlanPhase[] {
     const title = match
       ? titleCase(match[1].replace(/^(woche|monat|tag)/i, (w) => PHASE_WORDS[w.toLowerCase()]!))
       : "Other focus areas";
+    // The plan covers the first 90 days; drop goals the notes set for later.
+    if (beyondNinetyDays(title)) continue;
     const task = match ? match[2].trim() : line.trim();
     if (!task || task.toLowerCase().startsWith(NOT_PROVIDED.toLowerCase().slice(0, 13))) continue;
     const list = groups.get(title) ?? [];
@@ -192,6 +202,14 @@ export function groupPlan(lines: string[]): PlanPhase[] {
     .map(([title, tasks]) => ({ title, tasks }))
     .filter((p) => p.tasks.length > 0)
     .sort((a, b) => rank(a.title) - rank(b.title));
+}
+
+function beyondNinetyDays(title: string) {
+  const m = /^(week|month|day)\s*(\d+)/i.exec(title);
+  if (!m) return false;
+  const n = Number(m[2]);
+  const unit = m[1].toLowerCase();
+  return unit === "month" ? n > 3 : unit === "week" ? n > 13 : n > 90;
 }
 
 function rank(title: string) {
@@ -492,24 +510,42 @@ export const FAQ_CATEGORIES = [
   { id: "expectations", label: "faqcat.expectations", keywords: ["expect", "target", "goal", "kpi", "quota", "success", "review", "probation", "responsib", "erwart", "ziel", "erfolg", "probezeit", "verantwort", "quote"] },
 ] as const satisfies readonly { id: string; label: MessageKey; keywords: readonly string[] }[];
 
-export type FaqGroup = { id: string; label: MessageKey; items: { q: string; a: string }[] };
+/** A group shows `title` (a heading from the document) or else the translated `label`. */
+export type FaqGroup = { id: string; label: MessageKey; title?: string; items: QaItem[] };
 
-/** Buckets Q&A pairs into topic groups, keeping an "Other questions" catch-all. */
-export function groupFaqs(items: { q: string; a: string }[]): FaqGroup[] {
+/**
+ * Groups Q&A pairs. Questions the document filed under a heading stay under
+ * that heading, in document order; untagged ones (older content) are bucketed
+ * by keyword, keeping an "Other questions" catch-all.
+ */
+export function groupFaqs(items: QaItem[]): FaqGroup[] {
+  const topics = new Map<string, FaqGroup>();
+  for (const item of items) {
+    if (!item.topic) continue;
+    const id = `topic:${item.topic.toLowerCase()}`;
+    const group = topics.get(id) ?? { id, label: "faqcat.other", title: item.topic, items: [] };
+    group.items.push(item);
+    topics.set(id, group);
+  }
+
   const groups = new Map<string, FaqGroup>();
-  const push = (id: string, label: MessageKey, item: { q: string; a: string }) => {
+  const push = (id: string, label: MessageKey, item: QaItem) => {
     const group = groups.get(id) ?? { id, label, items: [] };
     group.items.push(item);
     groups.set(id, group);
   };
   for (const item of items) {
+    if (item.topic) continue;
     const haystack = `${item.q} ${item.a}`.toLowerCase();
     const match = FAQ_CATEGORIES.find((c) => c.keywords.some((k) => haystack.includes(k)));
     if (match) push(match.id, match.label, item);
     else push("other", "faqcat.other", item);
   }
   const order = [...FAQ_CATEGORIES.map((c) => c.id), "other"];
-  return [...groups.values()].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  return [
+    ...topics.values(),
+    ...[...groups.values()].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)),
+  ];
 }
 
 /**
