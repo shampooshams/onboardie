@@ -16,6 +16,7 @@ export const en = {
   "root.goHome": "Go home",
   "root.errorTitle": "This page didn't load",
   "root.errorBody": "Something went wrong on our end. You can try refreshing or head back home.",
+  "root.errorDetails": "Details",
   "root.tryAgain": "Try again",
   "root.setupTitle": "Setup incomplete",
   "root.setupBody":

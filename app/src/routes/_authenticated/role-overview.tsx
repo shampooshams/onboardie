@@ -123,7 +123,7 @@ function RoleOverviewPage() {
         .map((line) => {
           const parsed = labelled(line);
           const text = parsed && parsed.text.length > 20 ? parsed.text : line;
-          const firstSentence = text.split(/(?<=[.!?])\s+/)[0] ?? text;
+          const firstSentence = (text.match(/^.*?[.!?](?=\s|$)/)?.[0] ?? text);
           return firstSentence.trim().replace(/\.$/, "");
         })
         .filter((line) => line.length > 3)

@@ -20,6 +20,7 @@ export const de: Record<MessageKey, string> = {
   "root.errorTitle": "Diese Seite konnte nicht geladen werden",
   "root.errorBody":
     "Bei uns ist etwas schiefgelaufen. Laden Sie die Seite neu oder kehren Sie zur Startseite zurück.",
+  "root.errorDetails": "Details",
   "root.tryAgain": "Erneut versuchen",
   "root.setupTitle": "Einrichtung unvollständig",
   "root.setupBody":
