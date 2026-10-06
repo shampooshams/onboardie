@@ -63,6 +63,12 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
           {t("root.errorTitle")}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">{t("root.errorBody")}</p>
+        {/* Show the underlying error so a problem seen on someone's phone can be reported. */}
+        {(message || String(error ?? "")) && (
+          <p className="mt-4 break-words rounded-md bg-muted px-3 py-2 text-left font-mono text-xs text-muted-foreground">
+            {t("root.errorDetails")}: {message || String(error)}
+          </p>
+        )}
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
