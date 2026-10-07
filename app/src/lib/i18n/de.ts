@@ -218,6 +218,7 @@ export const de: Record<MessageKey, string> = {
   "role.impact": "Ihr Beitrag",
   "role.success": "Woran Erfolg erkennbar ist",
   "role.goodToKnow": "Gut zu wissen",
+  "role.keyFacts": "Wichtige Fakten",
   "role.commonQuestions": "Häufige Fragen",
   "role.emptyQuestions": "häufige Fragen",
   // Learning Plan page
@@ -366,6 +367,8 @@ export const de: Record<MessageKey, string> = {
   "section.toolsDesc": "Die Systeme, mit denen diese Rolle täglich arbeitet.",
   "section.contacts": "Ansprechpersonen",
   "section.contactsDesc": "Die Menschen, die neue Mitarbeitende unterstützen.",
+  "section.facts": "Wichtige Fakten",
+  "section.factsDesc": "Urlaub, Budgets, Arbeitszeiten und weitere konkrete Angaben.",
   "review.today": "heute, {time}",
   "review.listIntro":
     "Rollen, die auf Ihre Freigabe warten. Nach der Veröffentlichung finden Sie sie unter „Inhalte verwalten“.",

@@ -15,7 +15,8 @@ export const SECTION_LABELS = {
 } as const;
 
 export type SectionKey = keyof typeof SECTION_LABELS;
-export type Sections = Record<SectionKey, string[]>;
+/** Key facts are company-only (the shared Notion mockups have no such page). */
+export type Sections = Record<SectionKey, string[]> & { facts?: string[] };
 
 export const SECTION_KEYS = Object.keys(SECTION_LABELS) as SectionKey[];
 

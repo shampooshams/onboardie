@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { StructuredContent } from "./structure.functions";
 
-const KEYS = ["overview", "plan", "faq", "tools", "contacts"] as const;
+const KEYS = ["overview", "plan", "faq", "tools", "contacts", "facts"] as const;
 
 export type RoleDraft = {
   id: string;

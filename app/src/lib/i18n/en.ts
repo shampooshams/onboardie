@@ -205,6 +205,7 @@ export const en = {
   "role.impact": "Your impact",
   "role.success": "What success looks like",
   "role.goodToKnow": "Good to know",
+  "role.keyFacts": "Key facts",
   "role.commonQuestions": "Common questions",
   "role.emptyQuestions": "common questions",
   // Learning Plan page
@@ -340,6 +341,8 @@ export const en = {
   "section.toolsDesc": "The systems this role uses every day.",
   "section.contacts": "Who to Contact",
   "section.contactsDesc": "The people who can help a new hire succeed.",
+  "section.facts": "Key Facts",
+  "section.factsDesc": "Vacation, budgets, working hours and other concrete details.",
   "review.today": "today, {time}",
   "review.listIntro":
     "Roles waiting for your approval. Once you publish one, it moves to Manage Content.",

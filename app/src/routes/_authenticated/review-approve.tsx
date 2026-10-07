@@ -60,7 +60,7 @@ export const Route = createFileRoute("/_authenticated/review-approve")({
 });
 
 type Section = {
-  id: "overview" | "plan" | "faq" | "tools" | "contacts";
+  id: "overview" | "plan" | "faq" | "tools" | "contacts" | "facts";
   /** Translation keys; the items themselves are role content and stay as written. */
   title: MessageKey;
   description: MessageKey;
@@ -121,6 +121,14 @@ const INITIAL: Section[] = [
       "Sophia Klein — Senior Account Executive (deal strategy).",
       "Nina Vogel — Deal Desk (pricing & contracts).",
     ],
+  },
+  {
+    id: "facts",
+    title: "section.facts",
+    description: "section.factsDesc",
+    // Starts empty: example facts would otherwise be published with an older role
+    // that has none of its own.
+    items: [],
   },
 ];
 
@@ -428,6 +436,7 @@ function ReviewDetail() {
       faq: sections.find((s) => s.id === "faq")?.items ?? [],
       tools: sections.find((s) => s.id === "tools")?.items ?? [],
       contacts: sections.find((s) => s.id === "contacts")?.items ?? [],
+      facts: sections.find((s) => s.id === "facts")?.items ?? [],
     };
   }
 

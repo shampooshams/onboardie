@@ -13,7 +13,7 @@ export type LiveContentResult =
     }
   | { ok: false; error: "notion" };
 
-const KEYS = ["overview", "plan", "faq", "tools", "contacts"] as const;
+const KEYS = ["overview", "plan", "faq", "tools", "contacts", "facts"] as const;
 
 function normalize(raw: Record<string, unknown>): Sections {
   const sections = {} as Sections;

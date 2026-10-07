@@ -148,7 +148,7 @@ export const askCoach = createServerFn({ method: "POST" })
       const map = (sections ?? {}) as Record<string, unknown>;
       const keep: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(map)) {
-        if (/faq|general|company|polic|benefit|culture/i.test(key)) keep[key] = value;
+        if (/faq|facts|general|company|polic|benefit|culture/i.test(key)) keep[key] = value;
       }
       return keep;
     };
