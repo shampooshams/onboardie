@@ -30,11 +30,19 @@ function normalizeSections(raw: Record<string, unknown>): StructuredContent {
   return sections;
 }
 
-function validatePublish(input: unknown): { role: string; sections: StructuredContent } {
-  const data = input as { role?: unknown; sections?: unknown };
+function validatePublish(input: unknown): {
+  role: string;
+  sections: StructuredContent;
+  source: string;
+} {
+  const data = input as { role?: unknown; sections?: unknown; source?: unknown };
   const role =
     typeof data?.role === "string" && data.role.trim() ? data.role.trim() : "New hire role";
-  return { role, sections: normalizeSections((data?.sections ?? {}) as Record<string, unknown>) };
+  return {
+    role,
+    sections: normalizeSections((data?.sections ?? {}) as Record<string, unknown>),
+    source: typeof data?.source === "string" ? data.source.slice(0, 300_000) : "",
+  };
 }
 
 function validateRole(input: unknown): { role: string; source: RoleSource } {
@@ -53,11 +61,25 @@ export const publishRole = createServerFn({ method: "POST" })
       const companyId = await companyIdFor(context.supabase, context.userId);
       if (!companyId) return { ok: false, error: "no_company" };
 
+      // The original notes are stored under a reserved "raw" key for the coach.
+      // Editing a published role without a new upload keeps the notes it had.
+      let raw = data.source;
+      if (!raw.trim()) {
+        const { data: existing } = await context.supabase
+          .from("role_content")
+          .select("sections")
+          .eq("company_id", companyId)
+          .eq("role", data.role)
+          .maybeSingle();
+        const previous = (existing?.sections as { raw?: unknown } | null)?.raw;
+        raw = typeof previous === "string" ? previous : "";
+      }
+
       const { error } = await context.supabase.from("role_content").upsert(
         {
           company_id: companyId,
           role: data.role,
-          sections: data.sections as unknown as never,
+          sections: (raw ? { ...data.sections, raw } : data.sections) as unknown as never,
           created_by: context.userId,
           updated_at: new Date().toISOString(),
         } as never,

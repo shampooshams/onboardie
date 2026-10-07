@@ -328,6 +328,8 @@ function ReviewDetail() {
   const { role: roleParam, source: sourceParam, draft: draftParam } = Route.useSearch();
   const [sections, setSections] = useState<Section[]>(INITIAL);
   const [role, setRole] = useState<string>(roleParam ?? DEFAULT_ROLE);
+  /** The original uploaded notes, published with the role so the coach can check answers against them. */
+  const [source, setSource] = useState("");
   const [loadingLive, setLoadingLive] = useState(Boolean(roleParam || draftParam));
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
@@ -347,6 +349,7 @@ function ReviewDetail() {
         const result = await runLoadDraft({ data: { id: draftParam } });
         if (!active || !result.ok || !result.draft) return;
         setRole(result.draft.role);
+        setSource(result.draft.raw);
         setSections((prev) =>
           prev.map((s) => {
             const items = result.draft!.sections[s.id];
@@ -447,7 +450,7 @@ function ReviewDetail() {
     // Keep edits recoverable even if publishing fails.
     saveStructuredDraft({ ...payload, structuredAt: new Date().toISOString() });
     try {
-      const result = await runPublish({ data: payload });
+      const result = await runPublish({ data: { ...payload, source } });
       if (!result.ok) {
         setPublishError(
           result.error === "not_manager"

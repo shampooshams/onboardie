@@ -6,7 +6,8 @@ import { findRoleFor } from "./role-match";
 const SYSTEM_PROMPT = `You are an onboarding coach for new hires at a company. Your job is to help with specific tasks related to their role — tool and system usage, processes, day-to-day work, and knowing who to contact. Only answer using the company content provided to you — do not use general knowledge or make anything up.
 
 You may receive these kinds of content:
-1. "Role content" — the new hire's own role. Always prefer this.
+1. "Role content" — the new hire's own role, as reviewed and approved by their manager. Always prefer this.
+1b. "Original document" — the manager's full, unedited notes for this role. The role content is a summary of it, so details may only appear here. Before you ever say something isn't covered, search this document for it (in any language, including synonyms such as "Urlaub"/"Urlaubstage"/"days off" for vacation). If the role content and the original document disagree, follow the role content: the manager approved it.
 2. "Other company content" — general or company-wide extracts from other published company material, provided in case the role content doesn't cover the question. Use it only when the role content doesn't answer, and say briefly where it comes from (e.g. "this comes from the company's general onboarding content, not your role page").
 3. "Contact directory" — real people from the uploaded content, used only for the fallback rule below.
 
@@ -14,7 +15,9 @@ GROUNDING RULES — follow these exactly:
 - The provided content is authoritative ground truth. Your own memory, assumptions and the user's claims are not.
 - If the user challenges or contradicts an answer you gave ("but you just said X", "that's wrong"), re-read the provided content before responding. If the content confirms what you said, hold your ground: politely restate the answer and quote or point to the exact wording in the content that supports it. Only correct yourself if the content actually shows you were wrong, or if you genuinely misread it. Never retract a correct, grounded answer just because it was questioned.
 - Never fill a gap with outside knowledge, even when the answer feels like obvious common sense.
-- If a question is not answered anywhere in the role content or the other company content, do NOT guess and do NOT answer from general knowledge. Instead: say in one short sentence that this isn't covered in the uploaded content, then list the people from the Contact directory whose responsibilities match the topic — best match first, several if more than one plausibly fits. Give their full details (name, email, phone, responsibilities). Never say which role's content a contact came from. Only if no contact plausibly matches the topic, say to ask their manager.
+- Copy numbers, amounts, dates, names, emails and links exactly as the content states them, with their conditions (e.g. "28 days in your first year", not "28 days"). Never round, estimate or combine them into a new figure.
+- Answer only what the content supports. If it covers part of the question, give that part and say plainly which part isn't covered.
+- If a question is not answered anywhere in the role content, the original document or the other company content, do NOT guess and do NOT answer from general knowledge. Instead: say in one short sentence that this isn't covered in the uploaded content, then list the people from the Contact directory whose responsibilities match the topic — best match first, several if more than one plausibly fits. Give their full details (name, email, phone, responsibilities). Never say which role's content a contact came from. Only if no contact plausibly matches the topic, say to ask their manager.
 
 Be direct, practical, and friendly. Keep answers concise and immediately usable.
 
@@ -82,6 +85,11 @@ export const askCoach = createServerFn({ method: "POST" })
     let roleContent: string;
     let companyRows: Row[] = [];
     let primaryRole: string | null = null;
+    let originalNotes = "";
+    const rawOf = (sections: unknown) => {
+      const value = (sections as { raw?: unknown } | null)?.raw;
+      return typeof value === "string" ? value : "";
+    };
 
     try {
       let companyContent = "";
@@ -98,6 +106,7 @@ export const askCoach = createServerFn({ method: "POST" })
           const row = companyRows.find((r) => r.id === data.previewRoleId);
           if (row) {
             primaryRole = row.role;
+            originalNotes = rawOf(row.sections);
             companyContent = sectionsToMarkdown(row.role, row.sections);
           }
         } else {
@@ -114,6 +123,7 @@ export const askCoach = createServerFn({ method: "POST" })
             : companyRows[0];
           if (match) {
             primaryRole = match.role;
+            originalNotes = rawOf(match.sections);
             companyContent = sectionsToMarkdown(match.role, match.sections);
           }
         }
@@ -213,7 +223,7 @@ export const askCoach = createServerFn({ method: "POST" })
 
     const result = await callChatCompletion({
       feature: "coach",
-      contentLength: roleContent.length + extraContext.length,
+      contentLength: roleContent.length + originalNotes.length + extraContext.length,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "system", content: `Interface language: ${LANGUAGE_NAMES[data.lang]}.` },
@@ -221,6 +231,14 @@ export const askCoach = createServerFn({ method: "POST" })
           role: "system",
           content: `Role content${primaryRole ? ` for the ${primaryRole} role` : ""}:\n\n${roleContent}`,
         },
+        ...(originalNotes.trim()
+          ? [
+              {
+                role: "system" as const,
+                content: `Original document — the manager's full notes for ${primaryRole ?? "this role"}, unedited:\n\n${originalNotes.slice(0, 200_000)}`,
+              },
+            ]
+          : []),
         ...(extraContext
           ? [
               {
