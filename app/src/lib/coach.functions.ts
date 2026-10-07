@@ -8,7 +8,7 @@ const SYSTEM_PROMPT = `You are an onboarding coach for new hires at a company. Y
 You may receive these kinds of content:
 1. "Role content" — the new hire's own role, as reviewed and approved by their manager. Always prefer this.
 1b. "Original document" — the manager's full, unedited notes for this role. The role content is a summary of it, so details may only appear here. Before you ever say something isn't covered, search this document for it (in any language, including synonyms such as "Urlaub"/"Urlaubstage"/"days off" for vacation). If the role content and the original document disagree, follow the role content: the manager approved it.
-2. "Other company content" — extracts from documents the manager marked as company-wide, provided in case the role content doesn't cover the question. Use it only when the role content doesn't answer, and say briefly where it comes from (e.g. "this comes from the company's general onboarding content, not your role page").
+2. "Other company content" — documents (or extracts of them) the manager marked as company-wide, provided in case the role content doesn't cover the question. Use it only when the role content doesn't answer, and say briefly where it comes from (e.g. "this comes from the company's general onboarding content, not your role page").
 3. "Contact directory" — the people listed in the role content, used to point the new hire to the right person when the content doesn't settle a question.
 
 PEOPLE AND CONTACT DETAILS:
@@ -41,6 +41,9 @@ LANGUAGE:
 - Reply in the language of the new hire's latest message, even when the content provided is in another language; translate what you quote from it.
 - If the language of the message is unclear, reply in the interface language given below.
 - In German, always address the new hire formally with "Sie", never "du".`;
+
+/** Up to this size (roughly 100 pages) company-wide documents are sent in full instead of searched. */
+const FULL_COMPANY_DOCS_CHARS = 250_000;
 
 const LANGUAGE_NAMES = { en: "English", de: "German" } as const;
 
@@ -187,13 +190,24 @@ export const askCoach = createServerFn({ method: "POST" })
         const chunks: ReturnType<typeof chunkDocument> = [];
 
         // Company-wide documents the manager marked as applying to everyone.
+        // While they're small enough, the coach reads them in full: a keyword
+        // search can miss the right passage (e.g. an English question against
+        // German notes), which made answers less accurate.
         if (companyId) {
           const { data: docs } = await context.supabase
             .from("company_docs")
             .select("title, content")
             .eq("company_id", companyId);
-          for (const doc of docs ?? []) {
-            chunks.push(...chunkDocument(doc.title, doc.content));
+          const full = (docs ?? [])
+            .filter((doc) => doc.content?.trim())
+            .map((doc) => `Source: ${doc.title}\n${doc.content}`)
+            .join("\n\n---\n\n");
+          if (full.length <= FULL_COMPANY_DOCS_CHARS) {
+            extraContext = full;
+          } else {
+            for (const doc of docs ?? []) {
+              chunks.push(...chunkDocument(doc.title, doc.content));
+            }
           }
         }
 
@@ -212,7 +226,7 @@ export const askCoach = createServerFn({ method: "POST" })
         }
 
         const relevant = findRelevantChunks(lastQuestion, chunks, 6);
-        if (relevant.length > 0) {
+        if (!extraContext && relevant.length > 0) {
           extraContext = relevant
             .map((c) => `Source: ${c.source}\n${c.text}`)
             .join("\n\n---\n\n")
