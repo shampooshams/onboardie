@@ -60,7 +60,7 @@ export const Route = createFileRoute("/_authenticated/review-approve")({
 });
 
 type Section = {
-  id: "overview" | "plan" | "faq" | "tools" | "contacts";
+  id: "overview" | "plan" | "faq" | "tools" | "contacts" | "facts";
   /** Translation keys; the items themselves are role content and stay as written. */
   title: MessageKey;
   description: MessageKey;
@@ -121,6 +121,14 @@ const INITIAL: Section[] = [
       "Sophia Klein — Senior Account Executive (deal strategy).",
       "Nina Vogel — Deal Desk (pricing & contracts).",
     ],
+  },
+  {
+    id: "facts",
+    title: "section.facts",
+    description: "section.factsDesc",
+    // Starts empty: example facts would otherwise be published with an older role
+    // that has none of its own.
+    items: [],
   },
 ];
 
@@ -320,6 +328,8 @@ function ReviewDetail() {
   const { role: roleParam, source: sourceParam, draft: draftParam } = Route.useSearch();
   const [sections, setSections] = useState<Section[]>(INITIAL);
   const [role, setRole] = useState<string>(roleParam ?? DEFAULT_ROLE);
+  /** The original uploaded notes, published with the role so the coach can check answers against them. */
+  const [source, setSource] = useState("");
   const [loadingLive, setLoadingLive] = useState(Boolean(roleParam || draftParam));
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
@@ -339,6 +349,7 @@ function ReviewDetail() {
         const result = await runLoadDraft({ data: { id: draftParam } });
         if (!active || !result.ok || !result.draft) return;
         setRole(result.draft.role);
+        setSource(result.draft.raw);
         setSections((prev) =>
           prev.map((s) => {
             const items = result.draft!.sections[s.id];
@@ -428,6 +439,7 @@ function ReviewDetail() {
       faq: sections.find((s) => s.id === "faq")?.items ?? [],
       tools: sections.find((s) => s.id === "tools")?.items ?? [],
       contacts: sections.find((s) => s.id === "contacts")?.items ?? [],
+      facts: sections.find((s) => s.id === "facts")?.items ?? [],
     };
   }
 
@@ -438,7 +450,7 @@ function ReviewDetail() {
     // Keep edits recoverable even if publishing fails.
     saveStructuredDraft({ ...payload, structuredAt: new Date().toISOString() });
     try {
-      const result = await runPublish({ data: payload });
+      const result = await runPublish({ data: { ...payload, source } });
       if (!result.ok) {
         setPublishError(
           result.error === "not_manager"

@@ -3,7 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { LiveContentResult } from "./live-content.functions";
 import type { Sections } from "./notion-publish.server";
 
-const KEYS = ["overview", "plan", "faq", "tools", "contacts"] as const;
+const KEYS = ["overview", "plan", "faq", "tools", "contacts", "facts"] as const;
 
 function normalize(raw: Record<string, unknown>): Sections {
   const sections = {} as Sections;

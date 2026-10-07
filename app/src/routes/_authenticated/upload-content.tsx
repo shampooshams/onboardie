@@ -168,7 +168,7 @@ function UploadContentPage() {
         return;
       }
       saveStructuredDraft({ role, sections: result.sections, structuredAt: new Date().toISOString() });
-      const saved = await runSaveDraft({ data: { role, sections: result.sections } });
+      const saved = await runSaveDraft({ data: { role, sections: result.sections, raw: combinedContent() } });
       if (saved.ok && saved.id) navigate({ to: "/review-approve", search: { draft: saved.id } });
       else navigate({ to: "/review-approve" });
     } catch (error) {

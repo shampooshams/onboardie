@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ChevronDown, Compass, Sparkles, Target, TrendingUp } from "lucide-react";
+import { ChevronDown, Compass, ListChecks, Sparkles, Target, TrendingUp } from "lucide-react";
 import { AppLayout } from "@/components/app-layout";
 import { EmptyState, ErrorState, LoadingState } from "@/components/content-state";
 import { groupFaqs, splitQa, useLiveContent } from "@/lib/live-content";
@@ -131,6 +131,17 @@ function RoleOverviewPage() {
     [details, highlights],
   );
 
+  const facts = useMemo(
+    () =>
+      live.lines("facts").map((line) => {
+        const idx = line.indexOf(":");
+        return idx > 0 && idx < 40
+          ? { topic: line.slice(0, idx).trim(), text: line.slice(idx + 1).trim() }
+          : { topic: "", text: line.trim() };
+      }),
+    [live.sections],
+  );
+
   const faqGroups = useMemo(
     () => groupFaqs(live.lines("faq").map(splitQa)),
     [live.sections],
@@ -209,6 +220,27 @@ function RoleOverviewPage() {
               </div>
             )}
           </section>
+
+          {facts.length > 0 && (
+            <section className="mb-10">
+              <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
+                <ListChecks className="h-5 w-5 text-primary" />
+                {t("role.keyFacts")}
+              </h2>
+              <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {facts.map((f, i) => (
+                  <div key={i} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+                    {f.topic && (
+                      <dt className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        {f.topic}
+                      </dt>
+                    )}
+                    <dd className="mt-1 text-sm leading-relaxed text-foreground">{f.text}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          )}
 
           <section>
             <h2 className="text-lg font-semibold mb-4">{t("role.commonQuestions")}</h2>

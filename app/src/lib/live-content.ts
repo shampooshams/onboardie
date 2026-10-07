@@ -14,6 +14,7 @@ export type LiveSections = {
   faq: string[];
   tools: string[];
   contacts: string[];
+  facts: string[];
 };
 
 /** Fetches the published role content that new-hire pages render. */

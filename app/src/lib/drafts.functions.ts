@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { StructuredContent } from "./structure.functions";
 
-const KEYS = ["overview", "plan", "faq", "tools", "contacts"] as const;
+const KEYS = ["overview", "plan", "faq", "tools", "contacts", "facts"] as const;
 
 export type RoleDraft = {
   id: string;
@@ -40,12 +40,13 @@ function isRawOnly(sections: unknown): boolean {
   return !hasStructured && rawOf(sections).trim().length > 0;
 }
 
-function validateSave(input: unknown): { role: string; sections: StructuredContent } {
-  const data = input as { role?: unknown; sections?: unknown };
+function validateSave(input: unknown): { role: string; sections: StructuredContent; raw: string } {
+  const data = input as { role?: unknown; sections?: unknown; raw?: unknown };
   if (typeof data?.role !== "string" || !data.role.trim()) throw new Error("role is required");
   return {
     role: data.role.trim(),
     sections: normalizeSections((data?.sections ?? {}) as Record<string, unknown>),
+    raw: typeof data.raw === "string" ? data.raw.slice(0, 300_000) : "",
   };
 }
 
@@ -118,7 +119,9 @@ export const saveRoleDraft = createServerFn({ method: "POST" })
           {
             company_id: companyId,
             role: data.role,
-            sections: data.sections as unknown as never,
+            // The original notes travel with the draft so publishing can keep them
+            // for the coach to check answers against.
+            sections: (data.raw ? { ...data.sections, raw: data.raw } : data.sections) as unknown as never,
             is_revision: Boolean(published),
             created_by: context.userId,
             updated_at: new Date().toISOString(),
