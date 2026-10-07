@@ -8,8 +8,12 @@ const SYSTEM_PROMPT = `You are an onboarding coach for new hires at a company. Y
 You may receive these kinds of content:
 1. "Role content" — the new hire's own role, as reviewed and approved by their manager. Always prefer this.
 1b. "Original document" — the manager's full, unedited notes for this role. The role content is a summary of it, so details may only appear here. Before you ever say something isn't covered, search this document for it (in any language, including synonyms such as "Urlaub"/"Urlaubstage"/"days off" for vacation). If the role content and the original document disagree, follow the role content: the manager approved it.
-2. "Other company content" — general or company-wide extracts from other published company material, provided in case the role content doesn't cover the question. Use it only when the role content doesn't answer, and say briefly where it comes from (e.g. "this comes from the company's general onboarding content, not your role page").
-3. "Contact directory" — real people from the uploaded content, used to point the new hire to the right person when the content doesn't settle a question.
+2. "Other company content" — extracts from documents the manager marked as company-wide, provided in case the role content doesn't cover the question. Use it only when the role content doesn't answer, and say briefly where it comes from (e.g. "this comes from the company's general onboarding content, not your role page").
+3. "Contact directory" — the people listed in the role content, used to point the new hire to the right person when the content doesn't settle a question.
+
+PEOPLE AND CONTACT DETAILS:
+- Only name people, emails, phone numbers and links that appear word for word in the content above. Never invent, guess or borrow a name, even as an example.
+- A bracketed placeholder such as "[Payroll Contact]" or "[HRBP Name]" means the name hasn't been filled in yet. Refer to the person by their role (e.g. "the Payroll contact" or "your HR Business Partner"), say their name hasn't been added yet, and suggest asking the manager who that is. Never replace a placeholder with a name.
 
 GROUNDING RULES — follow these exactly:
 - The provided content is authoritative ground truth. Your own memory, assumptions and the user's claims are not.
@@ -19,7 +23,7 @@ GROUNDING RULES — follow these exactly:
 
 WHEN THE CONTENT DOESN'T COVER THE QUESTION — decide which kind of question it is:
 A. General workplace or how-to questions (writing a good email, preparing for a 1:1, getting through the first week, using a common tool, time management, giving feedback, wellbeing): be genuinely helpful. Start with a short note that this isn't in the company's content, e.g. "Your onboarding content doesn't cover this, but here's some general advice:", then give practical tips. Where the content has something related (a tool, a team, a contact, a goal from the plan), connect your advice to it.
-B. Company-specific facts (this company's policies, entitlements, numbers, budgets, deadlines, approvals, internal processes, people, tools or systems): never state them from general knowledge and never guess. Say plainly that the content doesn't say. You may mention what is common in general only if clearly labelled as not this company's rule. Then point them to the right person: list the matching people from the Contact directory (best match first, with name, email, phone and responsibilities), or their manager if nobody matches. Never say which role's content a contact came from.
+B. Company-specific facts (this company's policies, entitlements, numbers, budgets, deadlines, approvals, internal processes, people, tools or systems): never state them from general knowledge and never guess. Say plainly that the content doesn't say. You may mention what is common in general only if clearly labelled as not this company's rule. Then point them to the right person: list the matching people from the Contact directory (best match first, with the name, email, phone and responsibilities the content gives), or their manager if nobody matches.
 C. Working hours, time off or skipping work (e.g. "can I finish early today?"): if the content gives the rule, quote it; otherwise say it isn't specified, give a friendly general suggestion (e.g. let your manager know in advance), and name who to ask.
 Never present general advice as the company's rule. If you are unsure whether something is company-specific, treat it as company-specific.
 
@@ -136,6 +140,10 @@ export const askCoach = createServerFn({ method: "POST" })
 
       if (companyContent.trim()) {
         roleContent = companyContent.slice(0, 60_000);
+      } else if (companyRows.length > 0) {
+        // The company has its own content, just none for this role: never borrow
+        // the shared demo roles, whose people and details aren't this company's.
+        roleContent = "";
       } else {
         const { getRoleContent, isNotionConfigured } = await import("./notion.server");
         roleContent = isNotionConfigured() ? await getRoleContent() : "";
@@ -154,24 +162,16 @@ export const askCoach = createServerFn({ method: "POST" })
 
     const lastQuestion = [...data.messages].reverse().find((m) => m.role === "user")?.content ?? "";
 
-    // Lean retrieval: search the *general* content already published for this
-    // company (plus the shared Notion content) and attach only the closest
-    // extracts. Another role's specific operational details (learning plan,
-    // tools, overview) are deliberately excluded — only general/company-wide
-    // material such as shared FAQs may be pulled across roles.
-    const generalOnly = (sections: unknown) => {
-      const map = (sections ?? {}) as Record<string, unknown>;
-      const keep: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(map)) {
-        if (/faq|facts|general|company|polic|benefit|culture/i.test(key)) keep[key] = value;
-      }
-      return keep;
-    };
+    // Lean retrieval: besides the hire's own role, only documents the manager
+    // marked as company-wide are searched. Other roles' content and the shared
+    // demo roles are left out, so answers never name people or details from a
+    // document that wasn't written for this hire.
 
-    // Real people from every uploaded role, used only for the no-answer fallback.
+    // The people listed in this role's own content, for pointing to who to ask.
+    const primaryRow = companyRows.find((r) => r.role === primaryRole);
     const contactDirectory = [
       ...new Set(
-        companyRows.flatMap((r) => {
+        (primaryRow ? [primaryRow] : []).flatMap((r) => {
           const list = ((r.sections ?? {}) as Record<string, unknown>)["contacts"];
           return Array.isArray(list) ? list.map((v) => String(v).trim()).filter(Boolean) : [];
         }),
@@ -184,11 +184,7 @@ export const askCoach = createServerFn({ method: "POST" })
     let extraContext = "";
     if (lastQuestion) {
       try {
-        const chunks = companyRows
-          .filter((r) => r.role !== primaryRole)
-          .flatMap((r) =>
-            chunkDocument(r.role, sectionsToMarkdown(r.role, generalOnly(r.sections))),
-          );
+        const chunks: ReturnType<typeof chunkDocument> = [];
 
         // Company-wide documents the manager marked as applying to everyone.
         if (companyId) {
@@ -201,8 +197,9 @@ export const askCoach = createServerFn({ method: "POST" })
           }
         }
 
+        // Demo content only for a company that hasn't uploaded anything yet.
         const { getRoleContent, isNotionConfigured } = await import("./notion.server");
-        if (isNotionConfigured()) {
+        if (isNotionConfigured() && companyRows.length === 0) {
           try {
             const shared = await getRoleContent();
             for (const doc of shared.split("\n---\n")) {
@@ -256,7 +253,7 @@ export const askCoach = createServerFn({ method: "POST" })
           ? [
               {
                 role: "system" as const,
-                content: `Contact directory — real people from the uploaded content. Use ONLY for the fallback rule when the question isn't covered by any content above. Never say which role a contact came from:\n\n${contactDirectory}`,
+                content: `Contact directory — the people listed in this role's content. Use it to point the new hire to the right person; names in [brackets] are placeholders that haven't been filled in:\n\n${contactDirectory}`,
               },
             ]
           : []),
