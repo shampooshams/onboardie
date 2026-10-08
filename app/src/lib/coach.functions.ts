@@ -325,6 +325,17 @@ export const askCoach = createServerFn({ method: "POST" })
       }
     }
 
+    // Keep the conversation so the hire can pick it up later, on any device.
+    // Manager previews are tests and aren't saved. A missing table (setup SQL
+    // not run yet) only means no history; the answer is still returned.
+    if (lastQuestion && !data.previewRoleId) {
+      const { error } = await context.supabase.from("coach_messages" as never).insert([
+        { user_id: context.userId, role: "user", text: lastQuestion, sources: [] },
+        { user_id: context.userId, role: "coach", text: reply.answer, sources },
+      ] as never);
+      if (error) console.error("Saving chat history failed", error);
+    }
+
     return { ok: true, text: reply.answer, sources };
   });
 

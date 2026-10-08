@@ -1,9 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Send, ShieldCheck, Sparkles } from "lucide-react";
+import { RotateCcw, Send, ShieldCheck, Sparkles } from "lucide-react";
 import { AppLayout } from "@/components/app-layout";
 import { askCoach } from "@/lib/coach.functions";
+import { clearChatHistory, getChatHistory } from "@/lib/chat-history.functions";
 import { exampleQuestions, useLiveContent } from "@/lib/live-content";
 import { useProfile } from "@/lib/profile";
 import { useT } from "@/lib/i18n";
@@ -43,6 +45,36 @@ function AiCoachPage() {
   }, [live.sections, t]);
   const { profile } = useProfile();
   const firstName = (profile?.full_name ?? "").trim().split(/\s+/)[0] ?? "";
+
+  // The saved conversation comes back when the page opens, on any device.
+  // Manager previews are tests: they start empty and aren't saved.
+  const queryClient = useQueryClient();
+  const fetchHistory = useServerFn(getChatHistory);
+  const clearHistory = useServerFn(clearChatHistory);
+  const history = useQuery({
+    queryKey: ["chat-history"],
+    queryFn: () => fetchHistory(),
+    enabled: !live.isPreview,
+    refetchOnMount: "always",
+  });
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current || live.isPreview || history.isFetching || !history.data) return;
+    restored.current = true;
+    if (history.data.ok && history.data.messages.length > 0) {
+      setMessages((current) => (current.length > 0 ? current : history.data.ok ? history.data.messages : []));
+    }
+  }, [history.data, history.isFetching, live.isPreview]);
+
+  async function startNewChat() {
+    if (!window.confirm(t("coach.newChatConfirm"))) return;
+    setMessages([]);
+    if (!live.isPreview) {
+      await clearHistory();
+      queryClient.removeQueries({ queryKey: ["chat-history"] });
+    }
+    inputRef.current?.focus();
+  }
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -97,13 +129,24 @@ function AiCoachPage() {
           <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
             <Sparkles className="h-6 w-6" />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="text-xl font-semibold tracking-tight">{t("nav.coach")}</h1>
             <div className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
               <ShieldCheck className="h-3.5 w-3.5" />
               {t("coach.verified")}
             </div>
           </div>
+          {messages.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void startNewChat()}
+              disabled={isTyping}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground/80 hover:border-primary/40 hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              {t("coach.newChat")}
+            </button>
+          )}
         </header>
 
         {/* Messages */}
