@@ -1,9 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Send, ShieldCheck, Sparkles } from "lucide-react";
+import { RotateCcw, Send, ShieldCheck, Sparkles } from "lucide-react";
 import { AppLayout } from "@/components/app-layout";
 import { askCoach } from "@/lib/coach.functions";
+import { clearChatHistory, getChatHistory } from "@/lib/chat-history.functions";
 import { exampleQuestions, useLiveContent } from "@/lib/live-content";
 import { useProfile } from "@/lib/profile";
 import { useT } from "@/lib/i18n";
@@ -24,7 +26,8 @@ export const Route = createFileRoute("/_authenticated/ai-coach")({
 /** Shown only until this role's own Q&A content loads. */
 const FALLBACK_SUGGESTIONS = ["coach.fallback1", "coach.fallback2", "coach.fallback3"] as const;
 
-type Message = { id: string; role: "user" | "coach"; text: string };
+/** `sources` are the verified passages from the company content a coach answer is based on. */
+type Message = { id: string; role: "user" | "coach"; text: string; sources?: string[] };
 
 function AiCoachPage() {
   const { t, lang } = useT();
@@ -42,6 +45,36 @@ function AiCoachPage() {
   }, [live.sections, t]);
   const { profile } = useProfile();
   const firstName = (profile?.full_name ?? "").trim().split(/\s+/)[0] ?? "";
+
+  // The saved conversation comes back when the page opens, on any device.
+  // Manager previews are tests: they start empty and aren't saved.
+  const queryClient = useQueryClient();
+  const fetchHistory = useServerFn(getChatHistory);
+  const clearHistory = useServerFn(clearChatHistory);
+  const history = useQuery({
+    queryKey: ["chat-history"],
+    queryFn: () => fetchHistory(),
+    enabled: !live.isPreview,
+    refetchOnMount: "always",
+  });
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current || live.isPreview || history.isFetching || !history.data) return;
+    restored.current = true;
+    if (history.data.ok && history.data.messages.length > 0) {
+      setMessages((current) => (current.length > 0 ? current : history.data.ok ? history.data.messages : []));
+    }
+  }, [history.data, history.isFetching, live.isPreview]);
+
+  async function startNewChat() {
+    if (!window.confirm(t("coach.newChatConfirm"))) return;
+    setMessages([]);
+    if (!live.isPreview) {
+      await clearHistory();
+      queryClient.removeQueries({ queryKey: ["chat-history"] });
+    }
+    inputRef.current?.focus();
+  }
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -61,6 +94,7 @@ function AiCoachPage() {
     setIsTyping(true);
 
     let reply = t("coach.error");
+    let sources: string[] = [];
     try {
       const result = await ask({
         data: {
@@ -73,11 +107,12 @@ function AiCoachPage() {
         },
       });
       reply = result.ok ? result.text : result.message;
+      if (result.ok) sources = result.sources;
     } catch (error) {
       console.error(error);
     }
 
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "coach", text: reply }]);
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "coach", text: reply, sources }]);
     setIsTyping(false);
     inputRef.current?.focus();
   }
@@ -94,13 +129,24 @@ function AiCoachPage() {
           <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
             <Sparkles className="h-6 w-6" />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="text-xl font-semibold tracking-tight">{t("nav.coach")}</h1>
             <div className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
               <ShieldCheck className="h-3.5 w-3.5" />
               {t("coach.verified")}
             </div>
           </div>
+          {messages.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void startNewChat()}
+              disabled={isTyping}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground/80 hover:border-primary/40 hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              {t("coach.newChat")}
+            </button>
+          )}
         </header>
 
         {/* Messages */}
@@ -191,8 +237,30 @@ function MessageBubble({ message }: { message: Message }) {
         }
       >
         {isUser ? message.text : <FormattedAnswer text={message.text} />}
+        {!isUser && message.sources && message.sources.length > 0 && (
+          <Sources quotes={message.sources} />
+        )}
       </div>
     </div>
+  );
+}
+
+/** The exact passages from the uploaded content an answer is based on, so it can be checked. */
+function Sources({ quotes }: { quotes: string[] }) {
+  const { t } = useT();
+  return (
+    <details className="mt-3 border-t border-border pt-2 text-xs text-muted-foreground">
+      <summary className="cursor-pointer select-none font-medium">
+        {t("coach.sources", { count: quotes.length })}
+      </summary>
+      <ul className="mt-2 space-y-1.5">
+        {quotes.map((q, i) => (
+          <li key={i} className="border-l-2 border-primary/40 pl-2 italic">
+            „{q}“
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

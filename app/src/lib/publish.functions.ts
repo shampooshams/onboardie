@@ -93,6 +93,52 @@ export const publishRole = createServerFn({ method: "POST" })
     }
   });
 
+export type DeleteRoleResult = { ok: true } | { ok: false; error: "not_manager" | "db" };
+
+/**
+ * Manager-only: removes one of the company's published roles (and any pending
+ * draft for it). New hires with that job title then see no role content until
+ * it is uploaded again.
+ */
+export const deleteRole = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => {
+    const data = input as { id?: unknown };
+    if (typeof data?.id !== "string" || !data.id.trim()) throw new Error("id is required");
+    return { id: data.id.trim() };
+  })
+  .handler(async ({ data, context }): Promise<DeleteRoleResult> => {
+    try {
+      const { companyIdFor, isManager } = await import("./company.server");
+      const [companyId, manager] = await Promise.all([
+        companyIdFor(context.supabase, context.userId),
+        isManager(context.supabase, context.userId),
+      ]);
+      if (!manager || !companyId) return { ok: false, error: "not_manager" };
+
+      const { data: removed, error } = await context.supabase
+        .from("role_content")
+        .delete()
+        .eq("id", data.id)
+        .eq("company_id", companyId)
+        .select("role");
+      if (error) throw error;
+
+      const role = (removed?.[0] as { role?: string } | undefined)?.role;
+      if (role) {
+        await context.supabase
+          .from("role_drafts")
+          .delete()
+          .eq("company_id", companyId)
+          .eq("role", role);
+      }
+      return { ok: true };
+    } catch (error) {
+      console.error("Deleting role failed", error);
+      return { ok: false, error: "db" };
+    }
+  });
+
 /** Reads back one role: either the company's own content, or a read-only mockup role. */
 export const loadPublishedRole = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
