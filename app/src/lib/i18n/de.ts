@@ -189,7 +189,7 @@ export const de: Record<MessageKey, string> = {
   "ai.badFormat":
     "Die Antwort der KI hatte ein unerwartetes Format. Bitte versuchen Sie es erneut oder teilen Sie den Inhalt in kleinere Abschnitte auf.",
   // AI Coach page
-  "coach.verified": "Von Ihrer Führungskraft geprüft",
+  "coach.verified": "Jede Antwort zeigt ihre Quelle",
   "coach.fallback1": "Woran erkenne ich Erfolg in meinen ersten 90 Tagen?",
   "coach.fallback2": "Für welche Tools brauche ich einen Zugang?",
   "coach.fallback3": "An wen wende ich mich, wenn ich nicht weiterkomme?",
@@ -200,6 +200,9 @@ export const de: Record<MessageKey, string> = {
     "Fragen Sie alles zu Ihrer Rolle, Ihren Tools oder Ihren ersten Wochen. Die Antworten beruhen auf von Ihrer Führungskraft geprüften Inhalten.",
   "coach.placeholder": "Fragen Sie Ihren KI-Coach …",
   "coach.send": "Nachricht senden",
+  "coach.fromRoleDoc": "Aus Ihrem Onboarding-Dokument ({role}):",
+  "coach.fromCompanyDoc": "Aus dem unternehmensweiten Dokument „{doc}“:",
+  "coach.generalGuidance": "Allgemeiner Hinweis — nicht aus den Dokumenten Ihres Unternehmens:",
   "coach.noDocument": "Für Ihre Rolle („{role}“) ist noch kein Onboarding-Dokument veröffentlicht, daher kann ich nicht daraus antworten. Bitte bitten Sie Ihre Führungskraft, es hochzuladen, oder prüfen Sie Ihre Jobbezeichnung in den Einstellungen.",
   "coach.diagnostics": "Diagnose (nur für Führungskräfte sichtbar)",
   "coach.diagRole": "Verwendetes Rollendokument",

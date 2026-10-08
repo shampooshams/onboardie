@@ -15,9 +15,9 @@ export const Route = createFileRoute("/_authenticated/ai-coach")({
   head: () => ({
     meta: [
       { title: "Chat with Your AI Coach — Onboardie" },
-      { name: "description", content: "Chat with your AI onboarding coach, verified by your manager." },
+      { name: "description", content: "Chat with your AI onboarding coach — every answer shows its source." },
       { property: "og:title", content: "Chat with Your AI Coach — Onboardie" },
-      { property: "og:description", content: "Chat with your AI onboarding coach, verified by your manager." },
+      { property: "og:description", content: "Chat with your AI onboarding coach — every answer shows its source." },
     ],
   }),
   component: AiCoachPage,

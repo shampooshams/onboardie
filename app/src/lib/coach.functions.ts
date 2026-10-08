@@ -2,34 +2,46 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { langFrom, translate, type Lang } from "./i18n/translate";
 import { findRoleFor } from "./role-match";
-import { groupParagraphs, numberDocuments, readParagraphNumbers } from "./numbered-document";
+import { groupParagraphs, numberDocuments, readCoachPick } from "./numbered-document";
 
 /**
- * The model never writes the answer. The documents are sent as numbered
- * paragraphs and the model replies with paragraph numbers only; the new hire is
- * shown those paragraphs exactly as written — so nothing can be made up.
+ * Answers have two clearly separated parts. Anything from the company's
+ * documents is shown word for word: the documents are sent as numbered
+ * paragraphs and the model only returns paragraph numbers. For general
+ * questions the model may add its own advice, which is always shown under a
+ * "not from your company's documents" label and never states company facts.
  */
-const SYSTEM_PROMPT = `You find answers for a new hire in their company's onboarding documents. The documents below are split into numbered paragraphs like "[12] …". You never write answers: you only reply with the numbers of the paragraphs that answer the question, and the app shows the new hire those paragraphs word for word.
+const SYSTEM_PROMPT = `You help a new hire with questions during onboarding. The company's onboarding documents are below, split into numbered paragraphs like "[12] …". Your reply has two separate parts.
 
-For each question:
+1. "paragraphs": the numbers of the paragraphs that answer the question. The app shows the new hire those paragraphs word for word, labelled as coming from the company's documents.
 - Read all of the documents, including informal notes, abbreviations ("Std" = hours, "MA" = employee) and side remarks, in any language (e.g. "Urlaub" = vacation, "Probezeit" = probation, "Arbeitszeit" = working hours). The question may be in another language than the documents.
 - Choose every paragraph that answers the question: all steps of a procedure, every condition and exception, and who to inform or contact. When a question and its answer are separate paragraphs, choose both.
-- Use the conversation to understand follow-up questions (e.g. "and after that?").
-- If the documents don't answer the question, choose the paragraphs that say who is responsible for that topic, if there are any. Otherwise choose none.
-- Never choose paragraphs that are only loosely related.
+- If the documents don't answer a company-specific question, choose the paragraphs that say who is responsible for that topic, if there are any.
+- Never choose paragraphs that are only loosely related. Up to 8 numbers.
 
-Reply with only this json: {"paragraphs": [12, 13]} — up to 8 paragraph numbers, or {"paragraphs": []} if nothing answers the question.`;
+2. "general": your own short, practical advice, shown to the new hire labelled as general guidance that does not come from the company's documents.
+- Only for general questions that don't depend on this company: e.g. how to write a good email, prepare for a 1:1, structure the first weeks, give feedback, manage time, or what a common term or tool means in general.
+- Never state anything about this company — its policies, entitlements, numbers, budgets, deadlines, people, tools, processes or rules — even as a guess or "usually". Those come only from the documents. If the question is about this company and the documents don't answer it, leave "general" empty.
+- If the documents already answer the question fully, leave "general" empty. Never repeat or contradict the documents.
+- Write it in the language of the new hire's latest message, in markdown, under 120 words. In German, address the new hire formally with "Sie".
 
-/** Makes the provider return exactly {"paragraphs": number[]}. */
+Use the conversation to understand follow-up questions (e.g. "and after that?").
+
+Reply with only this json: {"paragraphs": [12, 13], "general": ""}`;
+
+/** Makes the provider return exactly {"paragraphs": number[], "general": string}. */
 const PARAGRAPHS_SCHEMA = {
   type: "json_schema",
   json_schema: {
-    name: "paragraphs",
+    name: "coach_reply",
     strict: true,
     schema: {
       type: "object",
-      properties: { paragraphs: { type: "array", items: { type: "integer" } } },
-      required: ["paragraphs"],
+      properties: {
+        paragraphs: { type: "array", items: { type: "integer" } },
+        general: { type: "string" },
+      },
+      required: ["paragraphs", "general"],
       additionalProperties: false,
     },
   },
@@ -240,13 +252,14 @@ export const askCoach = createServerFn({ method: "POST" })
       .split("\n\n---\n\n")
       .filter((part) => part.trim())
       .map((part) => {
-        const title = /^Source: (.+)$/m.exec(part)?.[1]?.trim() ?? "Company-wide document";
-        return { title: `Company-wide document: ${title}`, text: part.replace(/^Source: .+\n?/, "") };
+        const name = /^Source: (.+)$/m.exec(part)?.[1]?.trim() ?? "Company-wide document";
+        return { name, title: `Company-wide document: ${name}`, text: part.replace(/^Source: .+\n?/, "") };
       });
-    const numbered = numberDocuments([
-      { title: `Role document: ${primaryRole ?? "this role"}`, text: documentText },
-      ...companyDocs,
-    ]);
+    const sourceDocs = [
+      { name: primaryRole ?? "", title: `Role document: ${primaryRole ?? "this role"}`, text: documentText, companyWide: false },
+      ...companyDocs.map((d) => ({ ...d, companyWide: true })),
+    ];
+    const numbered = numberDocuments(sourceDocs);
 
     const messages = [
       { role: "system" as const, content: SYSTEM_PROMPT },
@@ -295,7 +308,7 @@ export const askCoach = createServerFn({ method: "POST" })
 
     const result = await ask();
     if (!result.ok) return { ok: false, message: aiFailureMessage(result.reason, data.lang, result.hint) };
-    let picked = readParagraphNumbers(result.text, numbered.units.length);
+    let picked = readCoachPick(result.text, numbered.units.length);
     record(result.text, picked.numbers);
     if (!picked.found) {
       // The model wrote text instead of numbers; ask once more.
@@ -304,21 +317,32 @@ export const askCoach = createServerFn({ method: "POST" })
         {
           role: "system",
           content:
-            'Do not write an answer. Reply with only the json {"paragraphs": [...]} listing the numbers of the paragraphs that answer the question.',
+            'Reply with only the json {"paragraphs": [...], "general": "..."}: the numbers of the paragraphs that answer the question, and general advice only if allowed by the rules (otherwise "").',
         },
       ]);
       if (retry.ok) {
-        picked = readParagraphNumbers(retry.text, numbered.units.length);
+        picked = readCoachPick(retry.text, numbered.units.length);
         record(retry.text, picked.numbers);
       }
     }
 
-    // Show the chosen paragraphs exactly as written, in document order.
-    const lines = groupParagraphs(picked.numbers, numbered.units);
-    const answer =
-      lines.length > 0
-        ? `${translate(data.lang, "coach.fromDocument")}\n${lines.map((l) => `- ${l}`).join("\n")}`
-        : translate(data.lang, "coach.notCovered");
+    // Document paragraphs exactly as written, labelled with the document they
+    // come from; then the model's general advice, labelled as not from them.
+    const blocks: string[] = [];
+    for (const group of groupParagraphs(picked.numbers, numbered)) {
+      const doc = sourceDocs[group.docIndex];
+      const heading = doc.companyWide
+        ? translate(data.lang, "coach.fromCompanyDoc", { doc: doc.name })
+        : doc.name
+          ? translate(data.lang, "coach.fromRoleDoc", { role: doc.name })
+          : translate(data.lang, "coach.fromDocument");
+      blocks.push(`**📄 ${heading}**\n${group.passages.map((p) => `- ${p}`).join("\n")}`);
+    }
+    if (picked.general) {
+      blocks.push(`**💡 ${translate(data.lang, "coach.generalGuidance")}**\n${picked.general}`);
+    }
+    if (blocks.length === 0) blocks.push(translate(data.lang, "coach.notCovered"));
+    const answer = blocks.join("\n\n");
     const sources: string[] = [];
 
     // Manager-only insight: bucket the question by topic. Never surfaced to the new hire.
