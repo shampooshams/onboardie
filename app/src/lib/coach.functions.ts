@@ -3,26 +3,27 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { langFrom, translate, type Lang } from "./i18n/translate";
 import { findRoleFor } from "./role-match";
 import { parseCoachReply } from "./coach-reply";
+import { createPassageFinder, passagesFor } from "./quote-match";
 
 /**
- * The model only finds lines; it never writes the answer. The new hire is shown
- * the document's own lines, word for word, after the server has checked each
+ * The model only finds passages; it never writes the answer. The new hire is shown
+ * the document's own text, word for word, after the server has checked each
  * one really is in the document — so nothing can be made up.
  */
-const SYSTEM_PROMPT = `You find answers for a new hire in their company's onboarding documents. You never write answers yourself: the app shows the new hire only the exact lines you point to, word for word, so anything you paraphrase, translate or invent is thrown away.
+const SYSTEM_PROMPT = `You find answers for a new hire in their company's onboarding documents. You never write answers yourself: the app shows the new hire only the exact passages you point to, taken word for word from the document, so anything you paraphrase, translate or invent is thrown away.
 
 For each question:
 - Read all of the documents below, including informal notes, abbreviations ("Std" = hours, "MA" = employee) and side remarks, in any language (e.g. "Urlaub" = vacation, "Probezeit" = probation, "Arbeitszeit" = working hours). The question may be in another language than the document.
-- Pick every line that answers the question: all steps of a procedure in order, every condition and exception, and who to inform or contact. Copy each line word for word, exactly as it appears, without translating, shortening, merging or fixing anything.
+- Pick every passage that answers the question: all steps of a procedure in order, every condition and exception, and who to inform or contact. A passage is a whole sentence, a list item, a table row or a question with its answer. Copy each passage word for word, exactly as it appears, without translating, shortening, merging or fixing anything.
 - Use the conversation to understand follow-up questions (e.g. "and after that?").
-- If the documents don't answer the question, pick the lines that say who is responsible for that topic, if there are any. Otherwise pick nothing.
-- Never pick lines that are only loosely related.
+- If the documents don't answer the question, pick the passages that say who is responsible for that topic, if there are any. Otherwise pick nothing.
+- Never pick passages that are only loosely related.
 
 Reply with exactly this and nothing else:
 SOURCES:
-> <first line, copied word for word>
-> <next line>
-Up to 8 lines. If nothing answers the question, reply with just "SOURCES:".`;
+> <first passage, copied word for word>
+> <next passage>
+Up to 8 passages, one per line. If nothing answers the question, reply with just "SOURCES:".`;
 
 /** Up to this size (roughly 100 pages) company-wide documents are sent in full instead of searched. */
 const FULL_COMPANY_DOCS_CHARS = 250_000;
@@ -268,7 +269,8 @@ export const askCoach = createServerFn({ method: "POST" })
     // The coach must quote the passages it relies on; quotes that aren't in the
     // content mean it misread or invented something, so it gets one retry with
     // that pointed out, and only verified quotes are ever shown.
-    const sourceText = normalizeForMatch([documentText, extraContext].join("\n"));
+    const fullDocument = [documentText, extraContext].join("\n\n");
+    const finder = createPassageFinder(fullDocument);
     const ask = (extra: typeof messages = []) =>
       callChatCompletion({
         feature: "coach",
@@ -279,11 +281,11 @@ export const askCoach = createServerFn({ method: "POST" })
     const result = await ask();
     if (!result.ok) return { ok: false, message: aiFailureMessage(result.reason, data.lang, result.hint) };
     let reply = parseCoachReply(result.text);
-    let unverified = reply.quotes.filter((q) => !isQuoted(q, sourceText));
+    let unverified = reply.quotes.filter((q) => !finder.find(q));
     if (unverified.length > 0 || !reply.wellFormed) {
       const problem = !reply.wellFormed
-        ? 'Your reply did not use the required format. Reply with only the line "SOURCES:" followed by the lines from the documents that answer the question, one per line starting with "> ", copied word for word.'
-        : `These lines do not appear word for word in the documents: ${JSON.stringify(unverified)}. Re-read the documents and point only to lines that are really there, copied exactly. Use the same format: "SOURCES:" and the lines.`;
+        ? 'Your reply did not use the required format. Reply with only the line "SOURCES:" followed by the passages from the documents that answer the question, one per line starting with "> ", copied word for word.'
+        : `These passages do not appear in the documents: ${JSON.stringify(unverified)}. Re-read the documents and point only to passages that are really there, copied exactly. Use the same format: "SOURCES:" and the passages.`;
       const retry = await ask([
         { role: "assistant", content: result.text },
         { role: "system", content: problem },
@@ -292,13 +294,12 @@ export const askCoach = createServerFn({ method: "POST" })
         const second = parseCoachReply(retry.text);
         // Keep the first reply if the retry came back unusable.
         if (second.wellFormed) reply = second;
-        unverified = reply.quotes.filter((q) => !isQuoted(q, sourceText));
+        unverified = reply.quotes.filter((q) => !finder.find(q));
       }
       if (unverified.length > 0) console.error("Coach quotes not found in content", unverified);
     }
-    const verified = reply.quotes.filter((q) => isQuoted(q, sourceText));
-    // Show the document's own lines (not the model's copy of them), in document order.
-    const lines = documentLines(verified, [documentText, extraContext].join("\n"));
+    // Show the document's own text for each passage (not the model's copy of it), in document order.
+    const lines = passagesFor(reply.quotes, fullDocument);
     const answer =
       lines.length > 0
         ? `${translate(data.lang, "coach.fromDocument")}\n${lines.map((l) => `- ${l}`).join("\n")}`
@@ -329,49 +330,3 @@ export const askCoach = createServerFn({ method: "POST" })
 
     return { ok: true, text: answer, sources };
   });
-
-/** Lowercases and reduces text to letters and digits, so quotes match despite spacing or bullets. */
-function normalizeForMatch(text: string): string {
-  return text
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim();
-}
-
-/**
- * The original lines of the document that a verified quote came from, in the
- * order they appear there, without their own bullet markers.
- */
-function documentLines(quotes: string[], document: string): string[] {
-  const lines = document
-    .split("\n")
-    .map((text, index) => ({ index, text: text.trim(), norm: normalizeForMatch(text) }))
-    .filter((l) => l.norm.length > 0);
-  const picked = new Map<number, string>();
-  for (const quote of quotes) {
-    const parts = quote.split(/\.\.\.|…/).map(normalizeForMatch).filter(Boolean);
-    for (const part of parts) {
-      const containing = lines.find((l) => l.norm.includes(part));
-      if (containing) {
-        picked.set(containing.index, containing.text);
-        continue;
-      }
-      // A quote spanning several lines: take each line it covers.
-      for (const l of lines) if (l.norm.length >= 12 && part.includes(l.norm)) picked.set(l.index, l.text);
-    }
-  }
-  return [...picked.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([, text]) => text.replace(/^(?:[-*•▪◦–]\s*)+/, "").trim())
-    .filter(Boolean);
-}
-
-/** True when every part of the quote (split at "…") appears in the content. */
-function isQuoted(quote: string, normalizedSource: string): boolean {
-  const parts = quote
-    .split(/\.\.\.|…/)
-    .map(normalizeForMatch)
-    .filter((part) => part.length > 0);
-  return parts.length > 0 && parts.every((part) => normalizedSource.includes(part));
-}
