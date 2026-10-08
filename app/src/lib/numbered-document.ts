@@ -35,7 +35,12 @@ export function numberDocuments(docs: { title: string; text: string }[]): Number
   for (const [docIndex, doc] of docs.entries()) {
     if (!doc.text.trim()) continue;
     const lines: string[] = [];
-    for (const raw of doc.text.split("\n")) {
+    // PDFs uploaded before paragraphs were kept are stored as one line per page;
+    // there, two or more spaces mark where a paragraph ended, so split on those.
+    const rawLines = doc.text
+      .split("\n")
+      .flatMap((line) => (line.length > MAX_UNIT_CHARS ? line.split(/[ \t]{2,}/) : [line]));
+    for (const raw of rawLines) {
       const line = raw.replace(/\s+/g, " ").trim();
       if (!line) continue;
       for (const unit of line.length > MAX_UNIT_CHARS ? sentences(line) : [line]) {
