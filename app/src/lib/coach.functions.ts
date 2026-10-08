@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { langFrom, translate, type Lang } from "./i18n/translate";
 import { findRoleFor } from "./role-match";
+import { parseCoachReply } from "./coach-reply";
 
 const SYSTEM_PROMPT = `You are an onboarding coach for new hires at a company. Your job is to help with their role — tool and system usage, processes, day-to-day work, settling in, and knowing who to contact. The company content provided to you is your first and most trusted source. When it doesn't cover a question, you still help with general, clearly labelled advice (see the rules below), but you never make up anything about this company.
 
@@ -298,16 +299,18 @@ export const askCoach = createServerFn({ method: "POST" })
     if (!result.ok) return { ok: false, message: aiFailureMessage(result.reason, data.lang, result.hint) };
     let reply = parseCoachReply(result.text);
     let unverified = reply.quotes.filter((q) => !isQuoted(q, sourceText));
-    if (unverified.length > 0) {
+    if (unverified.length > 0 || !reply.wellFormed) {
+      const problem = !reply.wellFormed
+        ? 'Your reply did not use the required format. Reply again with exactly {"quotes": [...], "answer": "..."} — the answer as one markdown string for the new hire, no other keys.'
+        : `These quotes do not appear word for word in the content: ${JSON.stringify(unverified)}. Re-read the original document and the other content, quote only text that is really there, and rewrite the answer using only what you can quote. Reply with the same json format.`;
       const retry = await ask([
         { role: "assistant", content: result.text },
-        {
-          role: "system",
-          content: `These quotes do not appear word for word in the content: ${JSON.stringify(unverified)}. Re-read the original document and the other content, quote only text that is really there, and rewrite the answer using only what you can quote. Reply with the same json format.`,
-        },
+        { role: "system", content: problem },
       ]);
       if (retry.ok) {
-        reply = parseCoachReply(retry.text);
+        const second = parseCoachReply(retry.text);
+        // Keep the first reply if the retry came back empty.
+        if (second.answer) reply = second;
         unverified = reply.quotes.filter((q) => !isQuoted(q, sourceText));
       }
       if (unverified.length > 0) console.error("Coach quotes not found in content", unverified);
@@ -355,23 +358,4 @@ function isQuoted(quote: string, normalizedSource: string): boolean {
     .map(normalizeForMatch)
     .filter((part) => part.length > 0);
   return parts.length > 0 && parts.every((part) => normalizedSource.includes(part));
-}
-
-/** Reads the coach's json reply; a reply that isn't json is shown as-is, without sources. */
-function parseCoachReply(text: string): { quotes: string[]; answer: string } {
-  try {
-    const start = text.indexOf("{");
-    const parsed = JSON.parse(start === -1 ? text : text.slice(start, text.lastIndexOf("}") + 1)) as {
-      quotes?: unknown;
-      answer?: unknown;
-    };
-    const answer = typeof parsed.answer === "string" ? parsed.answer.trim() : "";
-    if (!answer) throw new Error("no answer");
-    const quotes = Array.isArray(parsed.quotes)
-      ? parsed.quotes.map((q) => String(q).trim()).filter(Boolean).slice(0, 5)
-      : [];
-    return { quotes, answer };
-  } catch {
-    return { quotes: [], answer: text.trim() };
-  }
 }

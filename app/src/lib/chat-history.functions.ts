@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { readableStoredAnswer } from "./coach-reply";
 
 export type ChatHistoryMessage = {
   id: string;
@@ -39,7 +40,7 @@ export const getChatHistory = createServerFn({ method: "GET" })
         messages: rows.reverse().map((r) => ({
           id: r.id,
           role: r.role === "user" ? "user" : "coach",
-          text: r.text,
+          text: r.role === "user" ? r.text : readableStoredAnswer(r.text),
           sources: Array.isArray(r.sources) ? r.sources.map(String) : [],
         })),
       };
