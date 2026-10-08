@@ -220,7 +220,7 @@ export const de: Record<MessageKey, string> = {
   "coach.notCovered": "Dazu steht nichts in Ihrem Onboarding-Dokument. Bitte fragen Sie Ihre Führungskraft.",
   "coach.newChat": "Neuer Chat",
   "coach.newChatConfirm": "Einen neuen Chat beginnen? Ihr bisheriger Verlauf wird gelöscht.",
-  "coach.sources": "Aus Ihrem Dokument ({count})",
+  "coach.sources": "Genauer Wortlaut im Dokument ({count})",
   "coach.disclaimer": "Der KI-Coach kann sich irren. Fragen Sie im Zweifel Ihre Führungskraft.",
   // FAQ groups
   "faqcat.tooling": "Tools & Systeme",

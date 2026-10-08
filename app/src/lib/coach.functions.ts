@@ -28,6 +28,37 @@ Use the conversation to understand follow-up questions (e.g. "and after that?").
 
 Reply with only this json: {"passages": [{"paragraph": 12, "starts_with": "first words of paragraph 12"}], "needs_web": false}`;
 
+/**
+ * Rewords the chosen document paragraphs into a natural reply. The paragraphs
+ * are the only source; the result is checked by `keepsFacts` and replaced by
+ * the original wording if it adds a number, email, link or placeholder.
+ */
+const PHRASE_PROMPT = `You turn passages from a company's onboarding documents into a short, natural chat reply to the new hire's latest question, like a helpful colleague answering in a chat.
+- Use only the information in the passages. Keep every fact, number, date, name, contact, condition and instruction, with the same strength: "before", "must", "never", "immediately", "don't" stay exactly as strict. Keep placeholders such as "[Payroll Contact]" as written.
+- Don't add anything that isn't in the passages — no extra steps, tips, reasons or examples — and don't leave out an instruction that answers the question.
+- Don't repeat the question. Start with the answer and speak directly to them ("you").
+- Keep it short: one to three sentences, or a short list if there are several steps.
+- No headings, and don't mention "the document" or "the passages".
+- Reply in the language of their latest message, translating if needed. In German, address them formally with "Sie".`;
+
+/**
+ * True when the reworded reply introduces no number, email, link or bracketed
+ * placeholder that isn't in the original passages, and isn't padded out.
+ */
+function keepsFacts(reply: string, passages: string): boolean {
+  const source = passages.toLowerCase();
+  const digits = source.replace(/\D+/g, " ");
+  const numbers = reply.match(/\d+(?:[.,]\d+)*/g) ?? [];
+  if (numbers.some((n) => !digits.includes(n.replace(/\D+/g, " ").trim()))) return false;
+  const exact = [
+    ...(reply.match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) ?? []),
+    ...(reply.match(/https?:\/\/\S+|www\.\S+/g) ?? []),
+    ...(reply.match(/\[[^\]]+\]/g) ?? []),
+  ];
+  if (exact.some((t) => !source.includes(t.toLowerCase().replace(/[).,;]+$/, "")))) return false;
+  return reply.length <= passages.length * 2 + 300;
+}
+
 /** For the web step: a natural, conversational answer grounded in a Google Search. */
 const WEB_PROMPT = `You are a friendly, knowledgeable colleague helping a new hire during their onboarding, chatting with them like a helpful AI assistant would. Always run a Google Search first and base your answer on the pages you find, so the new hire can see where it comes from — even for everyday topics you already know about. Answer their latest question naturally and conversationally.
 - Speak directly to them ("you"), warm and practical, like a person in a chat — no formal headings like "General guidance".
@@ -82,6 +113,7 @@ export type CoachDiagnostics = {
   companyDocsChars: number;
   attempts: { reply: string; quotes: { text: string; found: boolean }[] }[];
   web?: { searched: boolean; queries: string[]; sources: number; error?: string };
+  phrasing?: string;
 };
 
 /** The web part of an answer: the pages it used, and Google's required Search Suggestions. */
@@ -355,7 +387,10 @@ export const askCoach = createServerFn({ method: "POST" })
       }
     }
 
-    // 1. Document paragraphs exactly as written, labelled with the document they come from.
+    // 1. The document's answer, labelled with the document it comes from:
+    // reworded into a natural reply from the chosen paragraphs only, or the
+    // paragraphs as written if the rewording fails its fact check. The exact
+    // wording is always kept and shown under the reply.
     const blocks: string[] = [];
     const shownPassages: string[] = [];
     for (const group of groupParagraphs(picked.numbers, numbered)) {
@@ -365,7 +400,22 @@ export const askCoach = createServerFn({ method: "POST" })
         : doc.name
           ? translate(data.lang, "coach.fromRoleDoc", { role: doc.name })
           : translate(data.lang, "coach.fromDocument");
-      blocks.push(`**📄 ${heading}**\n${group.passages.map((p) => `- ${p}`).join("\n")}`);
+      const passagesText = group.passages.map((p) => `- ${p}`).join("\n");
+      let body = passagesText;
+      const phrased = await callChatCompletion({
+        feature: "coach_phrase",
+        messages: [
+          { role: "system", content: `${PHRASE_PROMPT}\n\nPassages:\n${passagesText}` },
+          ...data.messages,
+        ],
+      });
+      if (phrased.ok && phrased.text.trim() && keepsFacts(phrased.text.trim(), group.passages.join("\n"))) {
+        body = phrased.text.trim();
+        diagnostics.phrasing = "natural";
+      } else {
+        diagnostics.phrasing = phrased.ok ? "fact check failed — original wording shown" : "rewording failed — original wording shown";
+      }
+      blocks.push(`**📄 ${heading}**\n${body}`);
       shownPassages.push(...group.passages);
     }
 
@@ -423,7 +473,8 @@ export const askCoach = createServerFn({ method: "POST" })
 
     if (blocks.length === 0) blocks.push(translate(data.lang, "coach.notCovered"));
     const answer = blocks.join("\n\n");
-    const sources: string[] = [];
+    // The exact wording from the documents, shown under the reply to compare.
+    const sources: string[] = shownPassages;
 
     // Manager-only insight: bucket the question by topic. Never surfaced to the new hire.
     // Preview questions are the manager's own, so they are not logged as hire questions.
@@ -442,7 +493,7 @@ export const askCoach = createServerFn({ method: "POST" })
     if (lastQuestion && !data.previewRoleId) {
       const { error } = await context.supabase.from("coach_messages" as never).insert([
         { user_id: context.userId, role: "user", text: lastQuestion, sources: [] },
-        { user_id: context.userId, role: "coach", text: answer, sources: web ? { web } : sources },
+        { user_id: context.userId, role: "coach", text: answer, sources: web ? { web, quotes: sources } : sources },
       ] as never);
       if (error) console.error("Saving chat history failed", error);
     }
