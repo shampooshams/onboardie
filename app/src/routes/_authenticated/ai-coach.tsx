@@ -288,7 +288,7 @@ function Sources({ quotes }: { quotes: string[] }) {
  */
 function WebSources({ web }: { web: CoachWeb }) {
   const { t } = useT();
-  if (!web.searched) {
+  if (!web.searched || (web.sources.length === 0 && !web.suggestionsHtml)) {
     return <p className="mt-3 border-t border-border pt-2 text-xs text-muted-foreground">💭 {t("coach.noWebSources")}</p>;
   }
   return (
