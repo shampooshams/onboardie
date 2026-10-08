@@ -24,11 +24,20 @@ export function parseCoachReply(text: string): CoachReply {
 
 function parsePlain(raw: string): CoachReply {
   const match = SOURCES_LINE.exec(raw);
-  if (!match) return { quotes: [], answer: raw, wellFormed: false };
+  if (!match) {
+    // Lines quoted with "> " but without the SOURCES heading still count.
+    const quoted = raw.split("\n").filter((line) => /^\s*>/.test(line));
+    return quoted.length > 0
+      ? { quotes: cleanQuotes(quoted), answer: "", wellFormed: true }
+      : { quotes: [], answer: raw, wellFormed: false };
+  }
   const answer = raw.slice(0, match.index).trim();
-  const quotes = raw
-    .slice(match.index + match[0].length)
-    .split("\n")
+  const quotes = cleanQuotes(raw.slice(match.index + match[0].length).split("\n"));
+  return { quotes, answer, wellFormed: true };
+}
+
+function cleanQuotes(lines: string[]): string[] {
+  return lines
     .map((line) =>
       line
         .replace(/^\s*(?:>|[-*•]|\d+[.)])\s*/, "")
@@ -37,8 +46,7 @@ function parsePlain(raw: string): CoachReply {
         .trim(),
     )
     .filter(Boolean)
-    .slice(0, 5);
-  return { quotes, answer, wellFormed: answer.length > 0 };
+    .slice(0, 8);
 }
 
 function parseJson(raw: string): CoachReply {

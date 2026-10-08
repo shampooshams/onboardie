@@ -187,6 +187,8 @@ export const en = {
     "Ask anything about your role, tools, or first weeks. Answers are reviewed by your manager.",
   "coach.placeholder": "Ask your AI Coach anything…",
   "coach.send": "Send message",
+  "coach.fromDocument": "From your onboarding document:",
+  "coach.notCovered": "Your onboarding document doesn't cover this. Please ask your manager.",
   "coach.newChat": "New chat",
   "coach.newChatConfirm": "Start a new chat? Your current conversation will be deleted.",
   "coach.sources": "From your document ({count})",

@@ -200,6 +200,8 @@ export const de: Record<MessageKey, string> = {
     "Fragen Sie alles zu Ihrer Rolle, Ihren Tools oder Ihren ersten Wochen. Die Antworten beruhen auf von Ihrer Führungskraft geprüften Inhalten.",
   "coach.placeholder": "Fragen Sie Ihren KI-Coach …",
   "coach.send": "Nachricht senden",
+  "coach.fromDocument": "Aus Ihrem Onboarding-Dokument:",
+  "coach.notCovered": "Dazu steht nichts in Ihrem Onboarding-Dokument. Bitte fragen Sie Ihre Führungskraft.",
   "coach.newChat": "Neuer Chat",
   "coach.newChatConfirm": "Einen neuen Chat beginnen? Ihr bisheriger Verlauf wird gelöscht.",
   "coach.sources": "Aus Ihrem Dokument ({count})",

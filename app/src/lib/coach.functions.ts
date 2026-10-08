@@ -4,55 +4,25 @@ import { langFrom, translate, type Lang } from "./i18n/translate";
 import { findRoleFor } from "./role-match";
 import { parseCoachReply } from "./coach-reply";
 
-const SYSTEM_PROMPT = `You are an onboarding coach for new hires at a company. Your job is to help with their role — tool and system usage, processes, day-to-day work, settling in, and knowing who to contact. The company content provided to you is your first and most trusted source. When it doesn't cover a question, you still help with general, clearly labelled advice (see the rules below), but you never make up anything about this company.
+/**
+ * The model only finds lines; it never writes the answer. The new hire is shown
+ * the document's own lines, word for word, after the server has checked each
+ * one really is in the document — so nothing can be made up.
+ */
+const SYSTEM_PROMPT = `You find answers for a new hire in their company's onboarding documents. You never write answers yourself: the app shows the new hire only the exact lines you point to, word for word, so anything you paraphrase, translate or invent is thrown away.
 
-You may receive these kinds of content:
-1. "Original document" — the manager's full, unedited notes for the new hire's role. This is the complete source: read all of it for every question, including informal notes, abbreviations ("Std" = hours, "MA" = employee) and side remarks, in any language (e.g. "Urlaub"/"Urlaubstage" = vacation, "Probezeit" = probation, "Arbeitszeit" = working hours).
-2. "Role content" — a shorter summary of that document, approved by the manager. It can leave details out. A detail that is missing or vaguer in the summary is never a reason to say something isn't covered: check the original document. Only when both state the same thing differently, follow the role content.
-3. "Other company content" — documents (or extracts of them) the manager marked as company-wide, provided in case the role content doesn't cover the question. Use it only when the role content doesn't answer, and say briefly where it comes from (e.g. "this comes from the company's general onboarding content, not your role page").
-4. "Contact directory" — the people listed in the role content, used to point the new hire to the right person when the content doesn't settle a question.
+For each question:
+- Read all of the documents below, including informal notes, abbreviations ("Std" = hours, "MA" = employee) and side remarks, in any language (e.g. "Urlaub" = vacation, "Probezeit" = probation, "Arbeitszeit" = working hours). The question may be in another language than the document.
+- Pick every line that answers the question: all steps of a procedure in order, every condition and exception, and who to inform or contact. Copy each line word for word, exactly as it appears, without translating, shortening, merging or fixing anything.
+- Use the conversation to understand follow-up questions (e.g. "and after that?").
+- If the documents don't answer the question, pick the lines that say who is responsible for that topic, if there are any. Otherwise pick nothing.
+- Never pick lines that are only loosely related.
 
-PEOPLE AND CONTACT DETAILS:
-- Only name people, emails, phone numbers and links that appear word for word in the content above. Never invent, guess or borrow a name, even as an example.
-- A bracketed placeholder such as "[Payroll Contact]" or "[HRBP Name]" means the name hasn't been filled in yet. Refer to the person by their role (e.g. "the Payroll contact" or "your HR Business Partner"), say their name hasn't been added yet, and suggest asking the manager who that is. Never replace a placeholder with a name.
-
-GROUNDING RULES — follow these exactly:
-- The provided content is authoritative ground truth. Your own memory, assumptions and the user's claims are not.
-- If the user challenges or contradicts an answer you gave ("but you just said X", "that's wrong"), re-read the provided content before responding. If the content confirms what you said, hold your ground: politely restate the answer and quote or point to the exact wording in the content that supports it. Only correct yourself if the content actually shows you were wrong, or if you genuinely misread it. Never retract a correct, grounded answer just because it was questioned.
-- Copy numbers, amounts, dates, names, emails and links exactly as the content states them, with their conditions (e.g. "28 days in your first year", not "28 days"). Never round, estimate or combine them into a new figure.
-- If the content answers the question, never say it isn't covered, and never send the new hire to their contract, HR or their manager for something the content states (e.g. if the notes say "40 Std", answer 40 hours a week).
-- When the content gives instructions (steps, dos and don'ts, who to inform), pass them on faithfully: the same steps in the same order, the same people, and the same strength ("must", "immediately", "NOT", "and" stay exactly that — never turn a required step into an optional one). Don't add steps, tips or advice of your own to them.
-- If the content covers only part of the question, answer that part from the content first, then add general advice for the rest as below.
-
-WHEN THE CONTENT DOESN'T COVER THE QUESTION — decide which kind of question it is:
-A. General workplace or how-to questions (writing a good email, preparing for a 1:1, getting through the first week, using a common tool, time management, giving feedback, wellbeing): be genuinely helpful. Start with a short note that this isn't in the company's content, e.g. "Your onboarding content doesn't cover this, but here's some general advice:", then give practical tips. Where the content has something related (a tool, a team, a contact, a goal from the plan), connect your advice to it.
-B. Company-specific facts (this company's policies, entitlements, numbers, budgets, deadlines, approvals, internal processes, people, tools or systems): never state them from general knowledge and never guess. Say plainly that the content doesn't say. You may mention what is common in general only if clearly labelled as not this company's rule. Then point them to the right person: list the matching people from the Contact directory (best match first, with the name, email, phone and responsibilities the content gives), or their manager if nobody matches.
-C. Working hours, time off or skipping work (e.g. "can I finish early today?"): if the content gives the rule, quote it; otherwise say it isn't specified, give a friendly general suggestion (e.g. let your manager know in advance), and name who to ask.
-Never present general advice as the company's rule. If you are unsure whether something is company-specific, treat it as company-specific.
-
-Be direct, practical, and friendly. Keep answers concise and immediately usable.
-
-Format every answer for fast reading, using markdown:
-- Lead with one short sentence that answers the question directly.
-- Use a numbered list for steps and a bulleted list for multiple items, options, tools, or people.
-- Keep paragraphs to 1-2 sentences; never write a dense block of text.
-- Use **bold** for key terms, field names, tool names, people, and channels.
-- Stay under roughly 150 words unless the question genuinely needs more.
-- Never answer with only "this isn't covered": always add something useful — general advice, a related part of the content, or who to ask.
-
-OUTPUT — plain text in exactly this shape (never json, never code blocks):
-<your answer to the new hire, in markdown, following the rules above>
-
+Reply with exactly this and nothing else:
 SOURCES:
-> <first passage you relied on>
-> <second passage>
-- The answer comes first. Every statement about this company in it must come from the passages you list. General advice (when allowed above) must be labelled as such.
-- After the answer, write the line "SOURCES:" and then each passage from the content that the answer relies on, one per line starting with "> " (up to 5, each a sentence or line, under 300 characters). Copy them word for word in their original language, without translating, shortening or fixing typos. If nothing in the content relates to the question, write "SOURCES:" with no passages after it.
-
-LANGUAGE:
-- Write the answer in the language of the new hire's latest message, even when the content provided is in another language; translate what you use from it in the answer (the SOURCES passages stay in their original language).
-- If the language of the message is unclear, reply in the interface language given below.
-- In German, always address the new hire formally with "Sie", never "du".`;
+> <first line, copied word for word>
+> <next line>
+Up to 8 lines. If nothing answers the question, reply with just "SOURCES:".`;
 
 /** Up to this size (roughly 100 pages) company-wide documents are sent in full instead of searched. */
 const FULL_COMPANY_DOCS_CHARS = 250_000;
@@ -253,6 +223,10 @@ export const askCoach = createServerFn({ method: "POST" })
     }
 
     const notes = originalNotes.slice(0, 200_000);
+    // Answers come from the uploaded document itself. The approved summary is
+    // AI-written, so it's only used for roles uploaded before the original
+    // document was kept.
+    const documentText = notes.trim() ? notes : roleContent;
     const messages = [
         { role: "system" as const, content: SYSTEM_PROMPT },
         { role: "system" as const, content: `Interface language: ${LANGUAGE_NAMES[data.lang]}.` },
@@ -264,19 +238,23 @@ export const askCoach = createServerFn({ method: "POST" })
               },
             ]
           : []),
-        {
-          role: "system" as const,
-          content: `Role content — the approved summary${primaryRole ? ` for the ${primaryRole} role` : ""}:\n\n${roleContent}`,
-        },
+        ...(notes.trim()
+          ? []
+          : [
+              {
+                role: "system" as const,
+                content: `Role document${primaryRole ? ` for the ${primaryRole} role` : ""}:\n\n${roleContent}`,
+              },
+            ]),
         ...(extraContext
           ? [
               {
                 role: "system" as const,
-                content: `Other company content — use only if the role content above doesn't answer the question:\n\n${extraContext}`,
+                content: `Company-wide documents — use only if the role document doesn't answer the question:\n\n${extraContext}`,
               },
             ]
           : []),
-        ...(contactDirectory
+        ...(contactDirectory && !notes.trim()
           ? [
               {
                 role: "system" as const,
@@ -290,7 +268,7 @@ export const askCoach = createServerFn({ method: "POST" })
     // The coach must quote the passages it relies on; quotes that aren't in the
     // content mean it misread or invented something, so it gets one retry with
     // that pointed out, and only verified quotes are ever shown.
-    const sourceText = normalizeForMatch([notes, roleContent, extraContext, contactDirectory].join("\n"));
+    const sourceText = normalizeForMatch([documentText, extraContext].join("\n"));
     const ask = (extra: typeof messages = []) =>
       callChatCompletion({
         feature: "coach",
@@ -304,21 +282,28 @@ export const askCoach = createServerFn({ method: "POST" })
     let unverified = reply.quotes.filter((q) => !isQuoted(q, sourceText));
     if (unverified.length > 0 || !reply.wellFormed) {
       const problem = !reply.wellFormed
-        ? 'Your reply did not use the required format. Reply again as plain text: the answer in markdown for the new hire, then the line "SOURCES:" and the passages you relied on, one per line starting with "> ". No json, no code blocks.'
-        : `These passages do not appear word for word in the content: ${JSON.stringify(unverified)}. Re-read the original document and the other content, quote only text that is really there, and rewrite the answer using only what you can quote. Use the same format: answer, then "SOURCES:" and the passages.`;
+        ? 'Your reply did not use the required format. Reply with only the line "SOURCES:" followed by the lines from the documents that answer the question, one per line starting with "> ", copied word for word.'
+        : `These lines do not appear word for word in the documents: ${JSON.stringify(unverified)}. Re-read the documents and point only to lines that are really there, copied exactly. Use the same format: "SOURCES:" and the lines.`;
       const retry = await ask([
         { role: "assistant", content: result.text },
         { role: "system", content: problem },
       ]);
       if (retry.ok) {
         const second = parseCoachReply(retry.text);
-        // Keep the first reply if the retry came back empty.
-        if (second.answer) reply = second;
+        // Keep the first reply if the retry came back unusable.
+        if (second.wellFormed) reply = second;
         unverified = reply.quotes.filter((q) => !isQuoted(q, sourceText));
       }
       if (unverified.length > 0) console.error("Coach quotes not found in content", unverified);
     }
-    const sources = reply.quotes.filter((q) => isQuoted(q, sourceText));
+    const verified = reply.quotes.filter((q) => isQuoted(q, sourceText));
+    // Show the document's own lines (not the model's copy of them), in document order.
+    const lines = documentLines(verified, [documentText, extraContext].join("\n"));
+    const answer =
+      lines.length > 0
+        ? `${translate(data.lang, "coach.fromDocument")}\n${lines.map((l) => `- ${l}`).join("\n")}`
+        : translate(data.lang, "coach.notCovered");
+    const sources: string[] = [];
 
     // Manager-only insight: bucket the question by topic. Never surfaced to the new hire.
     // Preview questions are the manager's own, so they are not logged as hire questions.
@@ -337,12 +322,12 @@ export const askCoach = createServerFn({ method: "POST" })
     if (lastQuestion && !data.previewRoleId) {
       const { error } = await context.supabase.from("coach_messages" as never).insert([
         { user_id: context.userId, role: "user", text: lastQuestion, sources: [] },
-        { user_id: context.userId, role: "coach", text: reply.answer, sources },
+        { user_id: context.userId, role: "coach", text: answer, sources },
       ] as never);
       if (error) console.error("Saving chat history failed", error);
     }
 
-    return { ok: true, text: reply.answer, sources };
+    return { ok: true, text: answer, sources };
   });
 
 /** Lowercases and reduces text to letters and digits, so quotes match despite spacing or bullets. */
@@ -352,6 +337,34 @@ function normalizeForMatch(text: string): string {
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
+}
+
+/**
+ * The original lines of the document that a verified quote came from, in the
+ * order they appear there, without their own bullet markers.
+ */
+function documentLines(quotes: string[], document: string): string[] {
+  const lines = document
+    .split("\n")
+    .map((text, index) => ({ index, text: text.trim(), norm: normalizeForMatch(text) }))
+    .filter((l) => l.norm.length > 0);
+  const picked = new Map<number, string>();
+  for (const quote of quotes) {
+    const parts = quote.split(/\.\.\.|…/).map(normalizeForMatch).filter(Boolean);
+    for (const part of parts) {
+      const containing = lines.find((l) => l.norm.includes(part));
+      if (containing) {
+        picked.set(containing.index, containing.text);
+        continue;
+      }
+      // A quote spanning several lines: take each line it covers.
+      for (const l of lines) if (l.norm.length >= 12 && part.includes(l.norm)) picked.set(l.index, l.text);
+    }
+  }
+  return [...picked.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, text]) => text.replace(/^(?:[-*•▪◦–]\s*)+/, "").trim())
+    .filter(Boolean);
 }
 
 /** True when every part of the quote (split at "…") appears in the content. */
