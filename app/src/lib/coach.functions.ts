@@ -33,8 +33,19 @@ const LANGUAGE_NAMES = { en: "English", de: "German" } as const;
 type CoachMessage = { role: "user" | "assistant"; content: string };
 
 /** `sources` are verified, word-for-word passages from the content the answer is based on. */
+/** Shown to managers only, under each coach reply, to see why it answered as it did. */
+export type CoachDiagnostics = {
+  role: string | null;
+  jobTitle: string;
+  preview: boolean;
+  usesOriginalDocument: boolean;
+  documentChars: number;
+  companyDocsChars: number;
+  attempts: { reply: string; quotes: { text: string; found: boolean }[] }[];
+};
+
 export type CoachResult =
-  | { ok: true; text: string; sources: string[] }
+  | { ok: true; text: string; sources: string[]; diagnostics?: CoachDiagnostics }
   | { ok: false; message: string };
 
 function validate(input: unknown): {
@@ -83,6 +94,7 @@ export const askCoach = createServerFn({ method: "POST" })
     let roleContent: string;
     let companyRows: Row[] = [];
     let primaryRole: string | null = null;
+    let lookedUpTitle = "";
     let originalNotes = "";
     const rawOf = (sections: unknown) => {
       const value = (sections as { raw?: unknown } | null)?.raw;
@@ -116,6 +128,7 @@ export const askCoach = createServerFn({ method: "POST" })
             .eq("id", context.userId)
             .maybeSingle();
           const roleTitle = (profileRow?.role_title ?? "").trim();
+          lookedUpTitle = roleTitle;
           const match = roleTitle
             ? findRoleFor(companyRows, roleTitle, (r) => r.role)
             : companyRows[0];
@@ -278,9 +291,38 @@ export const askCoach = createServerFn({ method: "POST" })
         messages: [...messages, ...extra],
       });
 
+    const { isManager } = await import("./company.server");
+    const showDiagnostics = await isManager(context.supabase, context.userId).catch(() => false);
+    const diagnostics: CoachDiagnostics = {
+      role: primaryRole,
+      jobTitle: lookedUpTitle,
+      preview: !!data.previewRoleId,
+      usesOriginalDocument: notes.trim().length > 0,
+      documentChars: documentText.length,
+      companyDocsChars: extraContext.length,
+      attempts: [],
+    };
+    const record = (text: string, quotes: string[]) =>
+      diagnostics.attempts.push({
+        reply: text.slice(0, 1500),
+        quotes: quotes.map((q) => ({ text: q, found: !!finder.find(q) })),
+      });
+
+    // Without any document for this role there is nothing to answer from; say so
+    // plainly (naming the job title looked up) instead of "not covered".
+    if (!fullDocument.trim()) {
+      return {
+        ok: true,
+        text: translate(data.lang, "coach.noDocument", { role: lookedUpTitle || "—" }),
+        sources: [],
+        ...(showDiagnostics ? { diagnostics } : {}),
+      };
+    }
+
     const result = await ask();
     if (!result.ok) return { ok: false, message: aiFailureMessage(result.reason, data.lang, result.hint) };
     let reply = parseCoachReply(result.text);
+    record(result.text, reply.quotes);
     let unverified = reply.quotes.filter((q) => !finder.find(q));
     if (unverified.length > 0 || !reply.wellFormed) {
       const problem = !reply.wellFormed
@@ -292,6 +334,7 @@ export const askCoach = createServerFn({ method: "POST" })
       ]);
       if (retry.ok) {
         const second = parseCoachReply(retry.text);
+        record(retry.text, second.quotes);
         // Keep the first reply if the retry came back unusable.
         if (second.wellFormed) reply = second;
         unverified = reply.quotes.filter((q) => !finder.find(q));
@@ -328,5 +371,5 @@ export const askCoach = createServerFn({ method: "POST" })
       if (error) console.error("Saving chat history failed", error);
     }
 
-    return { ok: true, text: answer, sources };
+    return { ok: true, text: answer, sources, ...(showDiagnostics ? { diagnostics } : {}) };
   });
