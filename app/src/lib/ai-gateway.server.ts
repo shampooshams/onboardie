@@ -130,6 +130,8 @@ export async function callChatCompletion(options: {
   feature: string;
   messages: ChatMessage[];
   jsonObject?: boolean;
+  /** A full response_format (e.g. a json_schema the provider must follow); wins over jsonObject. */
+  responseFormat?: Record<string, unknown>;
   maxCompletionTokens?: number;
   contentLength?: number;
 }): Promise<AiCallResult> {
@@ -164,7 +166,11 @@ export async function callChatCompletion(options: {
         },
         body: JSON.stringify({
           model,
-          ...(options.jsonObject ? { response_format: { type: "json_object" } } : {}),
+          ...(options.responseFormat
+            ? { response_format: options.responseFormat }
+            : options.jsonObject
+              ? { response_format: { type: "json_object" } }
+              : {}),
           ...(options.maxCompletionTokens
             ? { max_completion_tokens: options.maxCompletionTokens }
             : {}),

@@ -2,33 +2,41 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { langFrom, translate, type Lang } from "./i18n/translate";
 import { findRoleFor } from "./role-match";
-import { parseCoachReply } from "./coach-reply";
-import { createPassageFinder, passagesFor } from "./quote-match";
+import { groupParagraphs, numberDocuments, readParagraphNumbers } from "./numbered-document";
 
 /**
- * The model only finds passages; it never writes the answer. The new hire is shown
- * the document's own text, word for word, after the server has checked each
- * one really is in the document — so nothing can be made up.
+ * The model never writes the answer. The documents are sent as numbered
+ * paragraphs and the model replies with paragraph numbers only; the new hire is
+ * shown those paragraphs exactly as written — so nothing can be made up.
  */
-const SYSTEM_PROMPT = `You find answers for a new hire in their company's onboarding documents. You never write answers yourself: the app shows the new hire only the exact passages you point to, taken word for word from the document, so anything you paraphrase, translate or invent is thrown away.
+const SYSTEM_PROMPT = `You find answers for a new hire in their company's onboarding documents. The documents below are split into numbered paragraphs like "[12] …". You never write answers: you only reply with the numbers of the paragraphs that answer the question, and the app shows the new hire those paragraphs word for word.
 
 For each question:
-- Read all of the documents below, including informal notes, abbreviations ("Std" = hours, "MA" = employee) and side remarks, in any language (e.g. "Urlaub" = vacation, "Probezeit" = probation, "Arbeitszeit" = working hours). The question may be in another language than the document.
-- Pick every passage that answers the question: all steps of a procedure in order, every condition and exception, and who to inform or contact. A passage is a whole sentence, a list item, a table row or a question with its answer. Copy each passage word for word, exactly as it appears, without translating, shortening, merging or fixing anything.
+- Read all of the documents, including informal notes, abbreviations ("Std" = hours, "MA" = employee) and side remarks, in any language (e.g. "Urlaub" = vacation, "Probezeit" = probation, "Arbeitszeit" = working hours). The question may be in another language than the documents.
+- Choose every paragraph that answers the question: all steps of a procedure, every condition and exception, and who to inform or contact. When a question and its answer are separate paragraphs, choose both.
 - Use the conversation to understand follow-up questions (e.g. "and after that?").
-- If the documents don't answer the question, pick the passages that say who is responsible for that topic, if there are any. Otherwise pick nothing.
-- Never pick passages that are only loosely related.
+- If the documents don't answer the question, choose the paragraphs that say who is responsible for that topic, if there are any. Otherwise choose none.
+- Never choose paragraphs that are only loosely related.
 
-Reply with exactly this and nothing else:
-SOURCES:
-> <first passage, copied word for word>
-> <next passage>
-Up to 8 passages, one per line. If nothing answers the question, reply with just "SOURCES:".`;
+Reply with only this json: {"paragraphs": [12, 13]} — up to 8 paragraph numbers, or {"paragraphs": []} if nothing answers the question.`;
+
+/** Makes the provider return exactly {"paragraphs": number[]}. */
+const PARAGRAPHS_SCHEMA = {
+  type: "json_schema",
+  json_schema: {
+    name: "paragraphs",
+    strict: true,
+    schema: {
+      type: "object",
+      properties: { paragraphs: { type: "array", items: { type: "integer" } } },
+      required: ["paragraphs"],
+      additionalProperties: false,
+    },
+  },
+};
 
 /** Up to this size (roughly 100 pages) company-wide documents are sent in full instead of searched. */
 const FULL_COMPANY_DOCS_CHARS = 250_000;
-
-const LANGUAGE_NAMES = { en: "English", de: "German" } as const;
 
 type CoachMessage = { role: "user" | "assistant"; content: string };
 
@@ -169,20 +177,6 @@ export const askCoach = createServerFn({ method: "POST" })
     // demo roles are left out, so answers never name people or details from a
     // document that wasn't written for this hire.
 
-    // The people listed in this role's own content, for pointing to who to ask.
-    const primaryRow = companyRows.find((r) => r.role === primaryRole);
-    const contactDirectory = [
-      ...new Set(
-        (primaryRow ? [primaryRow] : []).flatMap((r) => {
-          const list = ((r.sections ?? {}) as Record<string, unknown>)["contacts"];
-          return Array.isArray(list) ? list.map((v) => String(v).trim()).filter(Boolean) : [];
-        }),
-      ),
-    ]
-      .map((line) => `- ${line}`)
-      .join("\n")
-      .slice(0, 8_000);
-
     let extraContext = "";
     if (lastQuestion) {
       try {
@@ -241,55 +235,35 @@ export const askCoach = createServerFn({ method: "POST" })
     // AI-written, so it's only used for roles uploaded before the original
     // document was kept.
     const documentText = notes.trim() ? notes : roleContent;
-    const messages = [
-        { role: "system" as const, content: SYSTEM_PROMPT },
-        { role: "system" as const, content: `Interface language: ${LANGUAGE_NAMES[data.lang]}.` },
-        ...(notes.trim()
-          ? [
-              {
-                role: "system" as const,
-                content: `Original document — the manager's full notes for ${primaryRole ?? "this role"}, unedited:\n\n${notes}`,
-              },
-            ]
-          : []),
-        ...(notes.trim()
-          ? []
-          : [
-              {
-                role: "system" as const,
-                content: `Role document${primaryRole ? ` for the ${primaryRole} role` : ""}:\n\n${roleContent}`,
-              },
-            ]),
-        ...(extraContext
-          ? [
-              {
-                role: "system" as const,
-                content: `Company-wide documents — use only if the role document doesn't answer the question:\n\n${extraContext}`,
-              },
-            ]
-          : []),
-        ...(contactDirectory && !notes.trim()
-          ? [
-              {
-                role: "system" as const,
-                content: `Contact directory — the people listed in this role's content. Use it to point the new hire to the right person; names in [brackets] are placeholders that haven't been filled in:\n\n${contactDirectory}`,
-              },
-            ]
-          : []),
-        ...data.messages,
-    ];
-
-    // The coach must quote the passages it relies on; quotes that aren't in the
-    // content mean it misread or invented something, so it gets one retry with
-    // that pointed out, and only verified quotes are ever shown.
-    const fullDocument = [documentText, extraContext].join("\n\n");
-    const finder = createPassageFinder(fullDocument);
-    const ask = (extra: typeof messages = []) =>
-      callChatCompletion({
-        feature: "coach",
-        contentLength: roleContent.length + notes.length + extraContext.length,
-        messages: [...messages, ...extra],
+    // Company-wide documents arrive either in full or as "Source: title\n…" extracts.
+    const companyDocs = extraContext
+      .split("\n\n---\n\n")
+      .filter((part) => part.trim())
+      .map((part) => {
+        const title = /^Source: (.+)$/m.exec(part)?.[1]?.trim() ?? "Company-wide document";
+        return { title: `Company-wide document: ${title}`, text: part.replace(/^Source: .+\n?/, "") };
       });
+    const numbered = numberDocuments([
+      { title: `Role document: ${primaryRole ?? "this role"}`, text: documentText },
+      ...companyDocs,
+    ]);
+
+    const messages = [
+      { role: "system" as const, content: SYSTEM_PROMPT },
+      { role: "system" as const, content: `Documents:\n\n${numbered.text}` },
+      ...data.messages,
+    ];
+    const ask = async (extra: typeof messages = []) => {
+      const request = {
+        feature: "coach",
+        contentLength: numbered.text.length,
+        messages: [...messages, ...extra],
+      };
+      const strict = await callChatCompletion({ ...request, responseFormat: PARAGRAPHS_SCHEMA });
+      // A provider that doesn't support json_schema gets the plain request instead.
+      if (strict.ok || strict.reason === "busy" || strict.reason === "auth") return strict;
+      return callChatCompletion(request);
+    };
 
     const { isManager } = await import("./company.server");
     const showDiagnostics = await isManager(context.supabase, context.userId).catch(() => false);
@@ -302,15 +276,15 @@ export const askCoach = createServerFn({ method: "POST" })
       companyDocsChars: extraContext.length,
       attempts: [],
     };
-    const record = (text: string, quotes: string[]) =>
+    const record = (text: string, numbers: number[]) =>
       diagnostics.attempts.push({
         reply: text.slice(0, 1500),
-        quotes: quotes.map((q) => ({ text: q, found: !!finder.find(q) })),
+        quotes: numbers.map((n) => ({ text: `[${n}] ${numbered.units[n - 1]}`, found: true })),
       });
 
     // Without any document for this role there is nothing to answer from; say so
     // plainly (naming the job title looked up) instead of "not covered".
-    if (!fullDocument.trim()) {
+    if (numbered.units.length === 0) {
       return {
         ok: true,
         text: translate(data.lang, "coach.noDocument", { role: lookedUpTitle || "—" }),
@@ -321,28 +295,26 @@ export const askCoach = createServerFn({ method: "POST" })
 
     const result = await ask();
     if (!result.ok) return { ok: false, message: aiFailureMessage(result.reason, data.lang, result.hint) };
-    let reply = parseCoachReply(result.text);
-    record(result.text, reply.quotes);
-    let unverified = reply.quotes.filter((q) => !finder.find(q));
-    if (unverified.length > 0 || !reply.wellFormed) {
-      const problem = !reply.wellFormed
-        ? 'Your reply did not use the required format. Reply with only the line "SOURCES:" followed by the passages from the documents that answer the question, one per line starting with "> ", copied word for word.'
-        : `These passages do not appear in the documents: ${JSON.stringify(unverified)}. Re-read the documents and point only to passages that are really there, copied exactly. Use the same format: "SOURCES:" and the passages.`;
+    let picked = readParagraphNumbers(result.text, numbered.units.length);
+    record(result.text, picked.numbers);
+    if (!picked.found) {
+      // The model wrote text instead of numbers; ask once more.
       const retry = await ask([
         { role: "assistant", content: result.text },
-        { role: "system", content: problem },
+        {
+          role: "system",
+          content:
+            'Do not write an answer. Reply with only the json {"paragraphs": [...]} listing the numbers of the paragraphs that answer the question.',
+        },
       ]);
       if (retry.ok) {
-        const second = parseCoachReply(retry.text);
-        record(retry.text, second.quotes);
-        // Keep the first reply if the retry came back unusable.
-        if (second.wellFormed) reply = second;
-        unverified = reply.quotes.filter((q) => !finder.find(q));
+        picked = readParagraphNumbers(retry.text, numbered.units.length);
+        record(retry.text, picked.numbers);
       }
-      if (unverified.length > 0) console.error("Coach quotes not found in content", unverified);
     }
-    // Show the document's own text for each passage (not the model's copy of it), in document order.
-    const lines = passagesFor(reply.quotes, fullDocument);
+
+    // Show the chosen paragraphs exactly as written, in document order.
+    const lines = groupParagraphs(picked.numbers, numbered.units);
     const answer =
       lines.length > 0
         ? `${translate(data.lang, "coach.fromDocument")}\n${lines.map((l) => `- ${l}`).join("\n")}`
