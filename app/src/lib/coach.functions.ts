@@ -29,7 +29,7 @@ Use the conversation to understand follow-up questions (e.g. "and after that?").
 Reply with only this json: {"passages": [{"paragraph": 12, "starts_with": "first words of paragraph 12"}], "needs_web": false}`;
 
 /** For the web step: a natural, conversational answer grounded in a Google Search. */
-const WEB_PROMPT = `You are a friendly, knowledgeable colleague helping a new hire during their onboarding, chatting with them like a helpful AI assistant would. Answer their latest question naturally and conversationally, using what you find on the web.
+const WEB_PROMPT = `You are a friendly, knowledgeable colleague helping a new hire during their onboarding, chatting with them like a helpful AI assistant would. Always run a Google Search first and base your answer on the pages you find, so the new hire can see where it comes from — even for everyday topics you already know about. Answer their latest question naturally and conversationally.
 - Speak directly to them ("you"), warm and practical, like a person in a chat — no formal headings like "General guidance".
 - Keep it short and easy to scan: a sentence or two, then a few bullet points or steps if useful. Under about 150 words.
 - Never state anything about their company — its policies, entitlements, numbers, people, internal tools or processes. If the question touches those, say they should check with their manager or the person responsible.
@@ -378,15 +378,36 @@ export const askCoach = createServerFn({ method: "POST" })
       const already = shownPassages.length
         ? `\n\nAlready shown to them from their company's documents:\n${shownPassages.map((p) => `- ${p}`).join("\n")}`
         : "";
-      const grounded = await callGroundedSearch({
+      let grounded = await callGroundedSearch({
         feature: "coach_web",
         system: WEB_PROMPT + already,
         messages: data.messages,
       });
-      if (grounded.ok) {
+      // The model decides itself whether to search; without sources, ask once
+      // more and insist on a search, since the answer must show where it's from.
+      if (grounded.ok && grounded.sources.length === 0) {
+        const retry = await callGroundedSearch({
+          feature: "coach_web",
+          system: WEB_PROMPT + already,
+          messages: [
+            ...data.messages,
+            {
+              role: "user",
+              content: "(Please search Google for this first and answer based on the web pages you find.)",
+            },
+          ],
+        });
+        if (retry.ok && retry.sources.length > 0) grounded = retry;
+      }
+      if (grounded.ok && grounded.sources.length > 0) {
         blocks.push(grounded.text);
         web = { sources: grounded.sources, suggestionsHtml: grounded.suggestionsHtml, searched: true };
         diagnostics.web = { searched: true, queries: grounded.queries, sources: grounded.sources.length };
+      } else if (grounded.ok) {
+        // Answered without searching: keep the answer, but say it isn't from web sources.
+        blocks.push(grounded.text);
+        web = { sources: [], suggestionsHtml: grounded.suggestionsHtml, searched: false };
+        diagnostics.web = { searched: false, queries: grounded.queries, sources: 0, error: "no search results" };
       } else {
         const plain = await callChatCompletion({
           feature: "coach_web",
