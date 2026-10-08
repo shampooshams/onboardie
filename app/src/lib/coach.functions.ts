@@ -40,13 +40,17 @@ Format every answer for fast reading, using markdown:
 - Stay under roughly 150 words unless the question genuinely needs more.
 - Never answer with only "this isn't covered": always add something useful — general advice, a related part of the content, or who to ask.
 
-OUTPUT — reply with a json object, nothing else:
-{"quotes": ["..."], "answer": "..."}
-- First, "quotes": copy the passages from the content above that answer the question, word for word and in their original language (up to 5, each a sentence or line, under 300 characters). Copy exactly, without translating, shortening or fixing typos. Use [] only if nothing in the content relates to the question.
-- Then, "answer": your reply to the new hire, in markdown, following the rules above. Every statement about this company in it must come from your quotes. General advice (when allowed above) must be labelled as such.
+OUTPUT — plain text in exactly this shape (never json, never code blocks):
+<your answer to the new hire, in markdown, following the rules above>
+
+SOURCES:
+> <first passage you relied on>
+> <second passage>
+- The answer comes first. Every statement about this company in it must come from the passages you list. General advice (when allowed above) must be labelled as such.
+- After the answer, write the line "SOURCES:" and then each passage from the content that the answer relies on, one per line starting with "> " (up to 5, each a sentence or line, under 300 characters). Copy them word for word in their original language, without translating, shortening or fixing typos. If nothing in the content relates to the question, write "SOURCES:" with no passages after it.
 
 LANGUAGE:
-- Reply in the language of the new hire's latest message, even when the content provided is in another language; translate what you quote from it.
+- Write the answer in the language of the new hire's latest message, even when the content provided is in another language; translate what you use from it in the answer (the SOURCES passages stay in their original language).
 - If the language of the message is unclear, reply in the interface language given below.
 - In German, always address the new hire formally with "Sie", never "du".`;
 
@@ -291,7 +295,6 @@ export const askCoach = createServerFn({ method: "POST" })
       callChatCompletion({
         feature: "coach",
         contentLength: roleContent.length + notes.length + extraContext.length,
-        jsonObject: true,
         messages: [...messages, ...extra],
       });
 
@@ -301,8 +304,8 @@ export const askCoach = createServerFn({ method: "POST" })
     let unverified = reply.quotes.filter((q) => !isQuoted(q, sourceText));
     if (unverified.length > 0 || !reply.wellFormed) {
       const problem = !reply.wellFormed
-        ? 'Your reply did not use the required format. Reply again with exactly {"quotes": [...], "answer": "..."} — the answer as one markdown string for the new hire, no other keys.'
-        : `These quotes do not appear word for word in the content: ${JSON.stringify(unverified)}. Re-read the original document and the other content, quote only text that is really there, and rewrite the answer using only what you can quote. Reply with the same json format.`;
+        ? 'Your reply did not use the required format. Reply again as plain text: the answer in markdown for the new hire, then the line "SOURCES:" and the passages you relied on, one per line starting with "> ". No json, no code blocks.'
+        : `These passages do not appear word for word in the content: ${JSON.stringify(unverified)}. Re-read the original document and the other content, quote only text that is really there, and rewrite the answer using only what you can quote. Use the same format: answer, then "SOURCES:" and the passages.`;
       const retry = await ask([
         { role: "assistant", content: result.text },
         { role: "system", content: problem },
