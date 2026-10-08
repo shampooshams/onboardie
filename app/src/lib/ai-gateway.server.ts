@@ -267,3 +267,99 @@ function baseFailureMessage(reason: AiFailureReason, lang: Lang): string {
       return translate(lang, "ai.unknown");
   }
 }
+
+export type WebSource = { title: string; url: string };
+
+export type GroundedResult =
+  | {
+      ok: true;
+      text: string;
+      sources: WebSource[];
+      /** Google's Search Suggestions html; must be shown unmodified next to the answer. */
+      suggestionsHtml: string;
+      queries: string[];
+    }
+  | { ok: false; reason: AiFailureReason | "unsupported"; detail?: string };
+
+/**
+ * Asks Gemini with Google Search grounding, so the answer comes with the web
+ * pages it used. Only available when AI_BASE_URL points at Google's Gemini API
+ * (its OpenAI-compatible endpoint doesn't return the sources); any other
+ * provider gets { ok: false, reason: "unsupported" }.
+ */
+export async function callGroundedSearch(options: {
+  feature: string;
+  system: string;
+  messages: { role: "user" | "assistant"; content: string }[];
+}): Promise<GroundedResult> {
+  const { apiKey, model } = aiConfig();
+  const base = (process.env.AI_BASE_URL || "").replace(/\/+$/, "");
+  if (!apiKey || !model || !/generativelanguage\.googleapis\.com/.test(base)) {
+    return { ok: false, reason: "unsupported" };
+  }
+  const nativeBase = base.replace(/\/openai$/, "");
+  const endpoint = `${nativeBase}/models/${encodeURIComponent(model)}:generateContent`;
+
+  let last: { reason: AiFailureReason; detail?: string } = { reason: "unknown" };
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: options.system }] },
+          contents: options.messages.map((m) => ({
+            role: m.role === "assistant" ? "model" : "user",
+            parts: [{ text: m.content }],
+          })),
+          tools: [{ google_search: {} }],
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.text();
+        last = { reason: classify(response.status, body), detail: body.slice(0, 1000) };
+        if (last.reason === "busy" && attempt < 2) {
+          await sleep(800);
+          continue;
+        }
+        break;
+      }
+      const payload = (await response.json()) as {
+        candidates?: Array<{
+          content?: { parts?: Array<{ text?: string }> };
+          groundingMetadata?: {
+            webSearchQueries?: string[];
+            searchEntryPoint?: { renderedContent?: string };
+            groundingChunks?: Array<{ web?: { uri?: string; title?: string } }>;
+          };
+        }>;
+      };
+      const candidate = payload.candidates?.[0];
+      const text = (candidate?.content?.parts ?? []).map((p) => p.text ?? "").join("").trim();
+      if (!text) {
+        last = { reason: "empty" };
+        break;
+      }
+      const meta = candidate?.groundingMetadata;
+      const seen = new Set<string>();
+      const sources: WebSource[] = [];
+      for (const chunk of meta?.groundingChunks ?? []) {
+        const url = chunk.web?.uri;
+        if (!url || seen.has(url)) continue;
+        seen.add(url);
+        sources.push({ title: chunk.web?.title || new URL(url).hostname, url });
+      }
+      return {
+        ok: true,
+        text,
+        sources: sources.slice(0, 6),
+        suggestionsHtml: meta?.searchEntryPoint?.renderedContent ?? "",
+        queries: meta?.webSearchQueries ?? [],
+      };
+    } catch (error) {
+      last = { reason: "network", detail: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  await recordAiFailure({ feature: options.feature, reason: last.reason, detail: last.detail });
+  return { ok: false, reason: last.reason, detail: last.detail };
+}

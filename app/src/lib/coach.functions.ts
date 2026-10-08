@@ -3,33 +3,41 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { langFrom, translate, type Lang } from "./i18n/translate";
 import { findRoleFor } from "./role-match";
 import { groupParagraphs, numberDocuments, readCoachPick } from "./numbered-document";
+import type { WebSource } from "./ai-gateway.server";
 
 /**
- * Answers have two clearly separated parts. Anything from the company's
- * documents is shown word for word: the documents are sent as numbered
- * paragraphs and the model only returns paragraph numbers. For general
- * questions the model may add its own advice, which is always shown under a
- * "not from your company's documents" label and never states company facts.
+ * Answers come from two clearly labelled places, in this order. First the
+ * company's documents, shown word for word: they are sent as numbered
+ * paragraphs and the model only returns paragraph numbers. Then, only for
+ * general questions the documents don't fully answer, a conversational answer
+ * from a Google Search, listed with the web pages it used.
  */
-const SYSTEM_PROMPT = `You help a new hire with questions during onboarding. The company's onboarding documents are below, split into numbered paragraphs like "[12] …". Your reply has two separate parts.
+const SYSTEM_PROMPT = `You help a new hire with questions during onboarding. The company's onboarding documents are below, split into numbered paragraphs like "[12] …".
 
 1. "passages": the paragraphs that answer the question, each given by its number and its first 5–8 words copied exactly ("starts_with"), so the app can check you picked the right one. The app shows the new hire those paragraphs word for word, labelled as coming from the company's documents.
 - Read all of the documents, including informal notes, abbreviations ("Std" = hours, "MA" = employee) and side remarks, in any language (e.g. "Urlaub" = vacation, "Probezeit" = probation, "Arbeitszeit" = working hours). The question may be in another language than the documents.
 - Choose a paragraph only if it directly answers the question: a new hire reading just that paragraph learns something they asked for. Choose all of them: every step of a procedure, every condition and exception, and who to inform or contact. When a question and its answer, or a sentence that continues, are in separate paragraphs, choose both.
 - If the documents don't answer a company-specific question, choose the paragraphs that say who is responsible for that topic, if there are any.
-- Never choose paragraphs that only touch the topic (e.g. a skill list or a tool description for a question on how to write an email). For a general question that the documents don't answer, choose none. Up to 8 paragraphs.
+- Never choose paragraphs that only touch the topic (e.g. a skill list or a tool description for a question on how to write an email). Up to 8 paragraphs.
 
-2. "general": your own short, practical advice, shown to the new hire labelled as general guidance that does not come from the company's documents.
-- Only for general questions that don't depend on this company: e.g. how to write a good email, prepare for a 1:1, structure the first weeks, give feedback, manage time, or what a common term or tool means in general.
-- Never state anything about this company — its policies, entitlements, numbers, budgets, deadlines, people, tools, processes or rules — even as a guess or "usually". Those come only from the documents. If the question is about this company and the documents don't answer it, leave "general" empty.
-- If the documents already answer the question fully, leave "general" empty. Never repeat or contradict the documents, and never mention them ("the guide", "your document", "the HR Wiki") — the general part must read as plain general advice.
-- Write it in the language of the new hire's latest message, in markdown, under 120 words. In German, address the new hire formally with "Sie".
+2. "needs_web": whether the app should also look the question up on the internet.
+- true when the documents don't fully answer the question and it can be answered with general, public information: e.g. how to write a good email, prepare for a 1:1 or give feedback, what a common term, law or tool means in general.
+- false when the documents fully answer it, or when it is about this company specifically — its policies, entitlements, numbers, budgets, deadlines, people, internal tools or processes. Those can only come from the documents, never from the internet.
 
 Use the conversation to understand follow-up questions (e.g. "and after that?").
 
-Reply with only this json: {"passages": [{"paragraph": 12, "starts_with": "first words of paragraph 12"}], "general": ""}`;
+Reply with only this json: {"passages": [{"paragraph": 12, "starts_with": "first words of paragraph 12"}], "needs_web": false}`;
 
-/** Makes the provider return exactly {"passages": [{paragraph, starts_with}], "general": string}. */
+/** For the web step: a natural, conversational answer grounded in a Google Search. */
+const WEB_PROMPT = `You are a friendly, knowledgeable colleague helping a new hire during their onboarding, chatting with them like a helpful AI assistant would. Answer their latest question naturally and conversationally, using what you find on the web.
+- Speak directly to them ("you"), warm and practical, like a person in a chat — no formal headings like "General guidance".
+- Keep it short and easy to scan: a sentence or two, then a few bullet points or steps if useful. Under about 150 words.
+- Never state anything about their company — its policies, entitlements, numbers, people, internal tools or processes. If the question touches those, say they should check with their manager or the person responsible.
+- Don't mention "documents", "the guide" or "the onboarding material", and don't repeat or contradict what they were already shown from their company's documents (given below, if any).
+- Don't put links or a source list in your text; the app lists the web pages you used below your answer.
+- Reply in the language of their latest message. In German, address them formally with "Sie".`;
+
+/** Makes the provider return exactly {"passages": [{paragraph, starts_with}], "needs_web": boolean}. */
 const PARAGRAPHS_SCHEMA = {
   type: "json_schema",
   json_schema: {
@@ -50,9 +58,9 @@ const PARAGRAPHS_SCHEMA = {
             additionalProperties: false,
           },
         },
-        general: { type: "string" },
+        needs_web: { type: "boolean" },
       },
-      required: ["passages", "general"],
+      required: ["passages", "needs_web"],
       additionalProperties: false,
     },
   },
@@ -73,10 +81,20 @@ export type CoachDiagnostics = {
   documentChars: number;
   companyDocsChars: number;
   attempts: { reply: string; quotes: { text: string; found: boolean }[] }[];
+  web?: { searched: boolean; queries: string[]; sources: number; error?: string };
+};
+
+/** The web part of an answer: the pages it used, and Google's required Search Suggestions. */
+export type CoachWeb = {
+  sources: WebSource[];
+  /** Google Search Suggestions html, shown unmodified as Google requires. */
+  suggestionsHtml: string;
+  /** False when no web search was possible and the answer is general knowledge. */
+  searched: boolean;
 };
 
 export type CoachResult =
-  | { ok: true; text: string; sources: string[]; diagnostics?: CoachDiagnostics }
+  | { ok: true; text: string; sources: string[]; web?: CoachWeb; diagnostics?: CoachDiagnostics }
   | { ok: false; message: string };
 
 function validate(input: unknown): {
@@ -106,7 +124,7 @@ export const askCoach = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(validate)
   .handler(async ({ data, context }): Promise<CoachResult> => {
-    const { callChatCompletion, aiFailureMessage, recordAiFailure } = await import(
+    const { callChatCompletion, callGroundedSearch, aiFailureMessage, recordAiFailure } = await import(
       "./ai-gateway.server"
     );
     const { chunkDocument, findRelevantChunks, sectionsToMarkdown } = await import(
@@ -328,7 +346,7 @@ export const askCoach = createServerFn({ method: "POST" })
         {
           role: "system",
           content:
-            'Reply with only the json {"passages": [{"paragraph": 12, "starts_with": "first words"}], "general": "..."}: the paragraphs that answer the question, and general advice only if allowed by the rules (otherwise "").',
+            'Reply with only the json {"passages": [{"paragraph": 12, "starts_with": "first words"}], "needs_web": false}: the paragraphs that answer the question, and whether to also look it up on the internet.',
         },
       ]);
       if (retry.ok) {
@@ -337,9 +355,9 @@ export const askCoach = createServerFn({ method: "POST" })
       }
     }
 
-    // Document paragraphs exactly as written, labelled with the document they
-    // come from; then the model's general advice, labelled as not from them.
+    // 1. Document paragraphs exactly as written, labelled with the document they come from.
     const blocks: string[] = [];
+    const shownPassages: string[] = [];
     for (const group of groupParagraphs(picked.numbers, numbered)) {
       const doc = sourceDocs[group.docIndex];
       const heading = doc.companyWide
@@ -348,10 +366,40 @@ export const askCoach = createServerFn({ method: "POST" })
           ? translate(data.lang, "coach.fromRoleDoc", { role: doc.name })
           : translate(data.lang, "coach.fromDocument");
       blocks.push(`**📄 ${heading}**\n${group.passages.map((p) => `- ${p}`).join("\n")}`);
+      shownPassages.push(...group.passages);
     }
-    if (picked.general) {
-      blocks.push(`**💡 ${translate(data.lang, "coach.generalGuidance")}**\n${picked.general}`);
+
+    // 2. Only for general questions the documents don't fully answer: a natural
+    // answer from a Google Search, with the web pages it used. Without web search
+    // (another AI provider, or the search failing) it's answered from general
+    // knowledge and marked as such.
+    let web: CoachWeb | undefined;
+    if (picked.needsWeb) {
+      const already = shownPassages.length
+        ? `\n\nAlready shown to them from their company's documents:\n${shownPassages.map((p) => `- ${p}`).join("\n")}`
+        : "";
+      const grounded = await callGroundedSearch({
+        feature: "coach_web",
+        system: WEB_PROMPT + already,
+        messages: data.messages,
+      });
+      if (grounded.ok) {
+        blocks.push(grounded.text);
+        web = { sources: grounded.sources, suggestionsHtml: grounded.suggestionsHtml, searched: true };
+        diagnostics.web = { searched: true, queries: grounded.queries, sources: grounded.sources.length };
+      } else {
+        const plain = await callChatCompletion({
+          feature: "coach_web",
+          messages: [{ role: "system", content: WEB_PROMPT + already }, ...data.messages],
+        });
+        if (plain.ok && plain.text.trim()) {
+          blocks.push(plain.text.trim());
+          web = { sources: [], suggestionsHtml: "", searched: false };
+        }
+        diagnostics.web = { searched: false, queries: [], sources: 0, error: grounded.reason };
+      }
     }
+
     if (blocks.length === 0) blocks.push(translate(data.lang, "coach.notCovered"));
     const answer = blocks.join("\n\n");
     const sources: string[] = [];
@@ -373,10 +421,16 @@ export const askCoach = createServerFn({ method: "POST" })
     if (lastQuestion && !data.previewRoleId) {
       const { error } = await context.supabase.from("coach_messages" as never).insert([
         { user_id: context.userId, role: "user", text: lastQuestion, sources: [] },
-        { user_id: context.userId, role: "coach", text: answer, sources },
+        { user_id: context.userId, role: "coach", text: answer, sources: web ? { web } : sources },
       ] as never);
       if (error) console.error("Saving chat history failed", error);
     }
 
-    return { ok: true, text: answer, sources, ...(showDiagnostics ? { diagnostics } : {}) };
+    return {
+      ok: true,
+      text: answer,
+      sources,
+      ...(web ? { web } : {}),
+      ...(showDiagnostics ? { diagnostics } : {}),
+    };
   });
