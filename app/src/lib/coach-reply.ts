@@ -1,7 +1,8 @@
 /**
- * Reads the coach model's reply. The model is asked for {"quotes": [], "answer": ""},
- * but sometimes picks other keys ("message", "suggested_actions"…). Whatever it
- * sends, a new hire must only ever see readable text, never raw json.
+ * Reads the coach model's reply: a markdown answer, then a "SOURCES:" line and
+ * the quoted passages, one per line starting with "> ". If the model sends json
+ * instead (it has invented its own shapes before), it's turned into readable
+ * text — a new hire must never see raw json.
  */
 export type CoachReply = {
   quotes: string[];
@@ -12,10 +13,36 @@ export type CoachReply = {
 
 const ANSWER_KEYS = ["answer", "message", "reply", "response", "text", "content"];
 
+/** The line that separates the answer from its quoted passages. */
+const SOURCES_LINE = /^[ \t]*[*_#]*\s*(?:sources|quellen)\s*[*_]*\s*:?[*_]*[ \t]*$/im;
+
 export function parseCoachReply(text: string): CoachReply {
-  const raw = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  const start = raw.indexOf("{");
-  if (start === -1) return { quotes: [], answer: raw, wellFormed: false };
+  const raw = text.trim().replace(/^```(?:json|markdown|md)?\s*/i, "").replace(/\s*```$/, "");
+  if (!raw.startsWith("{")) return parsePlain(raw);
+  return parseJson(raw);
+}
+
+function parsePlain(raw: string): CoachReply {
+  const match = SOURCES_LINE.exec(raw);
+  if (!match) return { quotes: [], answer: raw, wellFormed: false };
+  const answer = raw.slice(0, match.index).trim();
+  const quotes = raw
+    .slice(match.index + match[0].length)
+    .split("\n")
+    .map((line) =>
+      line
+        .replace(/^\s*(?:>|[-*•]|\d+[.)])\s*/, "")
+        .trim()
+        .replace(/^["„“”«»']+|["„“”«»']+$/g, "")
+        .trim(),
+    )
+    .filter(Boolean)
+    .slice(0, 5);
+  return { quotes, answer, wellFormed: answer.length > 0 };
+}
+
+function parseJson(raw: string): CoachReply {
+  const start = 0;
 
   let parsed: Record<string, unknown>;
   try {
@@ -47,21 +74,19 @@ export function readableStoredAnswer(text: string): string {
 /** Turns leftover json values into markdown: text as paragraphs, lists as bullets. */
 function readable(value: unknown): string {
   if (typeof value === "string") return value.trim();
-  if (Array.isArray(value)) {
-    return value
-      .map((v) => readable(v))
-      .filter(Boolean)
-      .map((v) => `- ${v.replace(/\n+/g, " ")}`)
-      .join("\n");
-  }
-  if (value && typeof value === "object") {
-    return Object.values(value)
-      .map((v) => readable(v))
-      .filter(Boolean)
-      .map((v) => (v.startsWith("- ") ? v : `- ${v}`))
-      .join("\n");
-  }
-  return "";
+  const items = Array.isArray(value) ? value : value && typeof value === "object" ? Object.values(value) : [];
+  return items
+    .map(inline)
+    .filter(Boolean)
+    .map((v) => `- ${v}`)
+    .join("\n");
+}
+
+/** One bullet's text: an object's text values joined, e.g. "Collect documents — Gather paperwork". */
+function inline(value: unknown): string {
+  if (typeof value === "string") return value.trim().replace(/\n+/g, " ");
+  const items = Array.isArray(value) ? value : value && typeof value === "object" ? Object.values(value) : [];
+  return items.map(inline).filter(Boolean).join(" — ");
 }
 
 function stripJsonNoise(text: string): string {
