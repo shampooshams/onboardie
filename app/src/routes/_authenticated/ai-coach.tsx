@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RotateCcw, Send, ShieldCheck, Sparkles } from "lucide-react";
 import { AppLayout } from "@/components/app-layout";
-import { askCoach } from "@/lib/coach.functions";
+import { askCoach, type CoachDiagnostics } from "@/lib/coach.functions";
 import { clearChatHistory, getChatHistory } from "@/lib/chat-history.functions";
 import { exampleQuestions, useLiveContent } from "@/lib/live-content";
 import { useProfile } from "@/lib/profile";
@@ -27,7 +27,14 @@ export const Route = createFileRoute("/_authenticated/ai-coach")({
 const FALLBACK_SUGGESTIONS = ["coach.fallback1", "coach.fallback2", "coach.fallback3"] as const;
 
 /** `sources` are the verified passages from the company content a coach answer is based on. */
-type Message = { id: string; role: "user" | "coach"; text: string; sources?: string[] };
+type Message = {
+  id: string;
+  role: "user" | "coach";
+  text: string;
+  sources?: string[];
+  /** Managers only: what the coach looked at for this reply. */
+  diagnostics?: CoachDiagnostics;
+};
 
 function AiCoachPage() {
   const { t, lang } = useT();
@@ -95,6 +102,7 @@ function AiCoachPage() {
 
     let reply = t("coach.error");
     let sources: string[] = [];
+    let diagnostics: CoachDiagnostics | undefined;
     try {
       const result = await ask({
         data: {
@@ -107,12 +115,15 @@ function AiCoachPage() {
         },
       });
       reply = result.ok ? result.text : result.message;
-      if (result.ok) sources = result.sources;
+      if (result.ok) {
+        sources = result.sources;
+        diagnostics = result.diagnostics;
+      }
     } catch (error) {
       console.error(error);
     }
 
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "coach", text: reply, sources }]);
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "coach", text: reply, sources, diagnostics }]);
     setIsTyping(false);
     inputRef.current?.focus();
   }
@@ -240,6 +251,7 @@ function MessageBubble({ message }: { message: Message }) {
         {!isUser && message.sources && message.sources.length > 0 && (
           <Sources quotes={message.sources} />
         )}
+        {!isUser && message.diagnostics && <Diagnostics data={message.diagnostics} />}
       </div>
     </div>
   );
@@ -260,6 +272,33 @@ function Sources({ quotes }: { quotes: string[] }) {
           </li>
         ))}
       </ul>
+    </details>
+  );
+}
+
+/** Managers only: which document the coach used and what the AI pointed to. */
+function Diagnostics({ data }: { data: CoachDiagnostics }) {
+  const { t } = useT();
+  return (
+    <details className="mt-3 border-t border-dashed border-border pt-2 text-xs text-muted-foreground">
+      <summary className="cursor-pointer select-none font-medium">{t("coach.diagnostics")}</summary>
+      <dl className="mt-2 space-y-1">
+        <div><dt className="inline font-medium">{t("coach.diagRole")}: </dt><dd className="inline">{data.role ?? "—"}{data.preview ? " (preview)" : ""}</dd></div>
+        <div><dt className="inline font-medium">{t("coach.diagJobTitle")}: </dt><dd className="inline">{data.jobTitle || "—"}</dd></div>
+        <div><dt className="inline font-medium">{t("coach.diagDocument")}: </dt><dd className="inline">{data.documentChars.toLocaleString()} {t("coach.diagChars")} ({data.usesOriginalDocument ? t("coach.diagOriginal") : t("coach.diagSummary")}), {t("coach.diagCompanyDocs")}: {data.companyDocsChars.toLocaleString()}</dd></div>
+      </dl>
+      {data.attempts.map((a, i) => (
+        <div key={i} className="mt-2">
+          <p className="font-medium">{t("coach.diagAttempt", { n: i + 1 })}</p>
+          <ul className="mt-1 space-y-1">
+            {a.quotes.length === 0 && <li>{t("coach.diagNoQuotes")}</li>}
+            {a.quotes.map((q, j) => (
+              <li key={j}>{q.found ? "✓" : "✗"} {q.text}</li>
+            ))}
+          </ul>
+          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-[11px]">{a.reply}</pre>
+        </div>
+      ))}
     </details>
   );
 }
