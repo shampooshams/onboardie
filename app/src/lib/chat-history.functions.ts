@@ -1,12 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { readableStoredAnswer } from "./coach-reply";
+import type { CoachWeb } from "./coach.functions";
 
 export type ChatHistoryMessage = {
   id: string;
   role: "user" | "coach";
   text: string;
   sources: string[];
+  web?: CoachWeb;
 };
 
 export type ChatHistoryResult = { ok: true; messages: ChatHistoryMessage[] } | { ok: false };
@@ -42,6 +44,10 @@ export const getChatHistory = createServerFn({ method: "GET" })
           role: r.role === "user" ? "user" : "coach",
           text: r.role === "user" ? r.text : readableStoredAnswer(r.text),
           sources: Array.isArray(r.sources) ? r.sources.map(String) : [],
+          // Answers with a web part are saved as { web: … } instead of a list.
+          ...(r.sources && !Array.isArray(r.sources) && typeof r.sources === "object" && "web" in r.sources
+            ? { web: (r.sources as { web: CoachWeb }).web }
+            : {}),
         })),
       };
     } catch (error) {

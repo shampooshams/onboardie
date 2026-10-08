@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RotateCcw, Send, ShieldCheck, Sparkles } from "lucide-react";
 import { AppLayout } from "@/components/app-layout";
-import { askCoach, type CoachDiagnostics } from "@/lib/coach.functions";
+import { askCoach, type CoachDiagnostics, type CoachWeb } from "@/lib/coach.functions";
 import { clearChatHistory, getChatHistory } from "@/lib/chat-history.functions";
 import { exampleQuestions, useLiveContent } from "@/lib/live-content";
 import { useProfile } from "@/lib/profile";
@@ -32,6 +32,8 @@ type Message = {
   role: "user" | "coach";
   text: string;
   sources?: string[];
+  /** The web part's sources (pages used, Google's search suggestions). */
+  web?: CoachWeb;
   /** Managers only: what the coach looked at for this reply. */
   diagnostics?: CoachDiagnostics;
 };
@@ -103,6 +105,7 @@ function AiCoachPage() {
     let reply = t("coach.error");
     let sources: string[] = [];
     let diagnostics: CoachDiagnostics | undefined;
+    let web: CoachWeb | undefined;
     try {
       const result = await ask({
         data: {
@@ -118,12 +121,13 @@ function AiCoachPage() {
       if (result.ok) {
         sources = result.sources;
         diagnostics = result.diagnostics;
+        web = result.web;
       }
     } catch (error) {
       console.error(error);
     }
 
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "coach", text: reply, sources, diagnostics }]);
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "coach", text: reply, sources, web, diagnostics }]);
     setIsTyping(false);
     inputRef.current?.focus();
   }
@@ -251,6 +255,7 @@ function MessageBubble({ message }: { message: Message }) {
         {!isUser && message.sources && message.sources.length > 0 && (
           <Sources quotes={message.sources} />
         )}
+        {!isUser && message.web && <WebSources web={message.web} />}
         {!isUser && message.diagnostics && <Diagnostics data={message.diagnostics} />}
       </div>
     </div>
@@ -276,6 +281,49 @@ function Sources({ quotes }: { quotes: string[] }) {
   );
 }
 
+/**
+ * Where the web part of an answer came from: the pages Google Search found,
+ * and Google's Search Suggestions, which must be shown unmodified when answers
+ * are grounded in Google Search (sandboxed, links open in a new tab).
+ */
+function WebSources({ web }: { web: CoachWeb }) {
+  const { t } = useT();
+  if (!web.searched) {
+    return <p className="mt-3 border-t border-border pt-2 text-xs text-muted-foreground">💭 {t("coach.noWebSources")}</p>;
+  }
+  return (
+    <div className="mt-3 border-t border-border pt-2 text-xs text-muted-foreground">
+      {web.sources.length > 0 && (
+        <>
+          <p className="font-medium">🌐 {t("coach.webSources")}</p>
+          <ul className="mt-1.5 flex flex-wrap gap-1.5">
+            {web.sources.map((s, i) => (
+              <li key={i}>
+                <a
+                  href={s.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex max-w-[16rem] items-center gap-1 truncate rounded-full border border-border bg-background px-2.5 py-1 text-foreground/80 hover:border-primary/50 hover:text-foreground"
+                >
+                  <span className="text-muted-foreground">{i + 1}</span> {s.title}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {web.suggestionsHtml && (
+        <iframe
+          title={t("coach.searchSuggestions")}
+          srcDoc={`<base target="_blank">${web.suggestionsHtml}`}
+          sandbox="allow-popups allow-popups-to-escape-sandbox"
+          className="mt-2 h-16 w-full border-0"
+        />
+      )}
+    </div>
+  );
+}
+
 /** Managers only: which document the coach used and what the AI pointed to. */
 function Diagnostics({ data }: { data: CoachDiagnostics }) {
   const { t } = useT();
@@ -287,6 +335,11 @@ function Diagnostics({ data }: { data: CoachDiagnostics }) {
         <div><dt className="inline font-medium">{t("coach.diagJobTitle")}: </dt><dd className="inline">{data.jobTitle || "—"}</dd></div>
         <div><dt className="inline font-medium">{t("coach.diagDocument")}: </dt><dd className="inline">{data.documentChars.toLocaleString()} {t("coach.diagChars")} ({data.usesOriginalDocument ? t("coach.diagOriginal") : t("coach.diagSummary")}), {t("coach.diagCompanyDocs")}: {data.companyDocsChars.toLocaleString()}</dd></div>
       </dl>
+      {data.web && (
+        <p className="mt-2">
+          🌐 {data.web.searched ? `web search: ${data.web.queries.join(" · ") || "—"} (${data.web.sources} sources)` : `no web search (${data.web.error ?? "—"})`}
+        </p>
+      )}
       {data.attempts.map((a, i) => (
         <div key={i} className="mt-2">
           <p className="font-medium">{t("coach.diagAttempt", { n: i + 1 })}</p>

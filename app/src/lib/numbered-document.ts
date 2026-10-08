@@ -56,8 +56,8 @@ export function numberDocuments(docs: { title: string; text: string }[]): Number
 
 export type CoachPick = {
   numbers: number[];
-  /** The model's own general advice, shown labelled as not from the documents. */
-  general: string;
+  /** The documents don't fully answer it and it's a general, public-knowledge question. */
+  needsWeb: boolean;
   /** False when the reply contained nothing usable (an explicit empty list counts as usable). */
   found: boolean;
 };
@@ -90,9 +90,9 @@ function resolvePick(n: number, startsWith: string, units: string[], normalized:
 
 /**
  * Reads the model's reply: {"passages": [{"paragraph": 12, "starts_with": "…"}],
- * "general": "…"} json (older {"paragraphs": [12]} also accepted), or, from a
+ * "needs_web": bool} json (older {"paragraphs": [12]} also accepted), or, from a
  * provider without structured output, "[12]" / "PARAGRAPHS: 12, 13" in plain text
- * (general advice is only taken from json, where it is clearly separated).
+ * (the web is only searched when the json asks for it).
  */
 export function readCoachPick(reply: string, units: string[]): CoachPick {
   const normalized = units.map(normalize);
@@ -102,8 +102,8 @@ export function readCoachPick(reply: string, units: string[]): CoachPick {
   const json = /\{[\s\S]*\}/.exec(reply)?.[0];
   if (json) {
     try {
-      const parsed = JSON.parse(json) as { passages?: unknown; paragraphs?: unknown; general?: unknown };
-      const general = typeof parsed.general === "string" ? parsed.general.trim().slice(0, 2000) : "";
+      const parsed = JSON.parse(json) as { passages?: unknown; paragraphs?: unknown; needs_web?: unknown };
+      const needsWeb = parsed.needs_web === true;
       if (Array.isArray(parsed.passages)) {
         const numbers = parsed.passages
           .map((p) => {
@@ -111,22 +111,22 @@ export function readCoachPick(reply: string, units: string[]): CoachPick {
             return resolvePick(Number(pick.paragraph), String(pick.starts_with ?? ""), units, normalized);
           })
           .filter((n): n is number => n !== null);
-        return { numbers: unique(numbers), general, found: true };
+        return { numbers: unique(numbers), needsWeb, found: true };
       }
       if (Array.isArray(parsed.paragraphs)) {
-        return { numbers: unique(parsed.paragraphs.map(Number)), general, found: true };
+        return { numbers: unique(parsed.paragraphs.map(Number)), needsWeb, found: true };
       }
     } catch {
       // fall through to plain-text forms
     }
   }
   const bracketed = [...reply.matchAll(/\[(\d{1,5})\]/g)].map((m) => Number(m[1]));
-  if (bracketed.length > 0) return { numbers: unique(bracketed), general: "", found: true };
+  if (bracketed.length > 0) return { numbers: unique(bracketed), needsWeb: false, found: true };
   const listed = /paragraphs?\s*:\s*([\d,\s]*)/i.exec(reply);
   if (listed) {
-    return { numbers: unique((listed[1].match(/\d+/g) ?? []).map(Number)), general: "", found: true };
+    return { numbers: unique((listed[1].match(/\d+/g) ?? []).map(Number)), needsWeb: false, found: true };
   }
-  return { numbers: [], general: "", found: false };
+  return { numbers: [], needsWeb: false, found: false };
 }
 
 /**
