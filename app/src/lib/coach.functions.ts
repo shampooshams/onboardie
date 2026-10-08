@@ -6,10 +6,10 @@ import { findRoleFor } from "./role-match";
 const SYSTEM_PROMPT = `You are an onboarding coach for new hires at a company. Your job is to help with their role — tool and system usage, processes, day-to-day work, settling in, and knowing who to contact. The company content provided to you is your first and most trusted source. When it doesn't cover a question, you still help with general, clearly labelled advice (see the rules below), but you never make up anything about this company.
 
 You may receive these kinds of content:
-1. "Role content" — the new hire's own role, as reviewed and approved by their manager. Always prefer this.
-1b. "Original document" — the manager's full, unedited notes for this role. The role content is a summary of it, so details may only appear here. Before you ever say something isn't covered, search this document for it (in any language, including synonyms such as "Urlaub"/"Urlaubstage"/"days off" for vacation). If the role content and the original document disagree, follow the role content: the manager approved it.
-2. "Other company content" — documents (or extracts of them) the manager marked as company-wide, provided in case the role content doesn't cover the question. Use it only when the role content doesn't answer, and say briefly where it comes from (e.g. "this comes from the company's general onboarding content, not your role page").
-3. "Contact directory" — the people listed in the role content, used to point the new hire to the right person when the content doesn't settle a question.
+1. "Original document" — the manager's full, unedited notes for the new hire's role. This is the complete source: read all of it for every question, including informal notes, abbreviations ("Std" = hours, "MA" = employee) and side remarks, in any language (e.g. "Urlaub"/"Urlaubstage" = vacation, "Probezeit" = probation, "Arbeitszeit" = working hours).
+2. "Role content" — a shorter summary of that document, approved by the manager. It can leave details out. A detail that is missing or vaguer in the summary is never a reason to say something isn't covered: check the original document. Only when both state the same thing differently, follow the role content.
+3. "Other company content" — documents (or extracts of them) the manager marked as company-wide, provided in case the role content doesn't cover the question. Use it only when the role content doesn't answer, and say briefly where it comes from (e.g. "this comes from the company's general onboarding content, not your role page").
+4. "Contact directory" — the people listed in the role content, used to point the new hire to the right person when the content doesn't settle a question.
 
 PEOPLE AND CONTACT DETAILS:
 - Only name people, emails, phone numbers and links that appear word for word in the content above. Never invent, guess or borrow a name, even as an example.
@@ -19,6 +19,8 @@ GROUNDING RULES — follow these exactly:
 - The provided content is authoritative ground truth. Your own memory, assumptions and the user's claims are not.
 - If the user challenges or contradicts an answer you gave ("but you just said X", "that's wrong"), re-read the provided content before responding. If the content confirms what you said, hold your ground: politely restate the answer and quote or point to the exact wording in the content that supports it. Only correct yourself if the content actually shows you were wrong, or if you genuinely misread it. Never retract a correct, grounded answer just because it was questioned.
 - Copy numbers, amounts, dates, names, emails and links exactly as the content states them, with their conditions (e.g. "28 days in your first year", not "28 days"). Never round, estimate or combine them into a new figure.
+- If the content answers the question, never say it isn't covered, and never send the new hire to their contract, HR or their manager for something the content states (e.g. if the notes say "40 Std", answer 40 hours a week).
+- When the content gives instructions (steps, dos and don'ts, who to inform), pass them on faithfully: the same steps in the same order, the same people, and the same strength ("must", "immediately", "NOT", "and" stay exactly that — never turn a required step into an optional one). Don't add steps, tips or advice of your own to them.
 - If the content covers only part of the question, answer that part from the content first, then add general advice for the rest as below.
 
 WHEN THE CONTENT DOESN'T COVER THE QUESTION — decide which kind of question it is:
@@ -37,6 +39,11 @@ Format every answer for fast reading, using markdown:
 - Stay under roughly 150 words unless the question genuinely needs more.
 - Never answer with only "this isn't covered": always add something useful — general advice, a related part of the content, or who to ask.
 
+OUTPUT — reply with a json object, nothing else:
+{"quotes": ["..."], "answer": "..."}
+- First, "quotes": copy the passages from the content above that answer the question, word for word and in their original language (up to 5, each a sentence or line, under 300 characters). Copy exactly, without translating, shortening or fixing typos. Use [] only if nothing in the content relates to the question.
+- Then, "answer": your reply to the new hire, in markdown, following the rules above. Every statement about this company in it must come from your quotes. General advice (when allowed above) must be labelled as such.
+
 LANGUAGE:
 - Reply in the language of the new hire's latest message, even when the content provided is in another language; translate what you quote from it.
 - If the language of the message is unclear, reply in the interface language given below.
@@ -49,7 +56,10 @@ const LANGUAGE_NAMES = { en: "English", de: "German" } as const;
 
 type CoachMessage = { role: "user" | "assistant"; content: string };
 
-export type CoachResult = { ok: true; text: string } | { ok: false; message: string };
+/** `sources` are verified, word-for-word passages from the content the answer is based on. */
+export type CoachResult =
+  | { ok: true; text: string; sources: string[] }
+  | { ok: false; message: string };
 
 function validate(input: unknown): {
   messages: CoachMessage[];
@@ -237,24 +247,22 @@ export const askCoach = createServerFn({ method: "POST" })
       }
     }
 
-    const result = await callChatCompletion({
-      feature: "coach",
-      contentLength: roleContent.length + originalNotes.length + extraContext.length,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "system", content: `Interface language: ${LANGUAGE_NAMES[data.lang]}.` },
-        {
-          role: "system",
-          content: `Role content${primaryRole ? ` for the ${primaryRole} role` : ""}:\n\n${roleContent}`,
-        },
-        ...(originalNotes.trim()
+    const notes = originalNotes.slice(0, 200_000);
+    const messages = [
+        { role: "system" as const, content: SYSTEM_PROMPT },
+        { role: "system" as const, content: `Interface language: ${LANGUAGE_NAMES[data.lang]}.` },
+        ...(notes.trim()
           ? [
               {
                 role: "system" as const,
-                content: `Original document — the manager's full notes for ${primaryRole ?? "this role"}, unedited:\n\n${originalNotes.slice(0, 200_000)}`,
+                content: `Original document — the manager's full notes for ${primaryRole ?? "this role"}, unedited:\n\n${notes}`,
               },
             ]
           : []),
+        {
+          role: "system" as const,
+          content: `Role content — the approved summary${primaryRole ? ` for the ${primaryRole} role` : ""}:\n\n${roleContent}`,
+        },
         ...(extraContext
           ? [
               {
@@ -272,10 +280,39 @@ export const askCoach = createServerFn({ method: "POST" })
             ]
           : []),
         ...data.messages,
-      ],
-    });
+    ];
 
+    // The coach must quote the passages it relies on; quotes that aren't in the
+    // content mean it misread or invented something, so it gets one retry with
+    // that pointed out, and only verified quotes are ever shown.
+    const sourceText = normalizeForMatch([notes, roleContent, extraContext, contactDirectory].join("\n"));
+    const ask = (extra: typeof messages = []) =>
+      callChatCompletion({
+        feature: "coach",
+        contentLength: roleContent.length + notes.length + extraContext.length,
+        jsonObject: true,
+        messages: [...messages, ...extra],
+      });
+
+    const result = await ask();
     if (!result.ok) return { ok: false, message: aiFailureMessage(result.reason, data.lang, result.hint) };
+    let reply = parseCoachReply(result.text);
+    let unverified = reply.quotes.filter((q) => !isQuoted(q, sourceText));
+    if (unverified.length > 0) {
+      const retry = await ask([
+        { role: "assistant", content: result.text },
+        {
+          role: "system",
+          content: `These quotes do not appear word for word in the content: ${JSON.stringify(unverified)}. Re-read the original document and the other content, quote only text that is really there, and rewrite the answer using only what you can quote. Reply with the same json format.`,
+        },
+      ]);
+      if (retry.ok) {
+        reply = parseCoachReply(retry.text);
+        unverified = reply.quotes.filter((q) => !isQuoted(q, sourceText));
+      }
+      if (unverified.length > 0) console.error("Coach quotes not found in content", unverified);
+    }
+    const sources = reply.quotes.filter((q) => isQuoted(q, sourceText));
 
     // Manager-only insight: bucket the question by topic. Never surfaced to the new hire.
     // Preview questions are the manager's own, so they are not logged as hire questions.
@@ -288,5 +325,42 @@ export const askCoach = createServerFn({ method: "POST" })
       }
     }
 
-    return { ok: true, text: result.text };
+    return { ok: true, text: reply.answer, sources };
   });
+
+/** Lowercases and reduces text to letters and digits, so quotes match despite spacing or bullets. */
+function normalizeForMatch(text: string): string {
+  return text
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+/** True when every part of the quote (split at "…") appears in the content. */
+function isQuoted(quote: string, normalizedSource: string): boolean {
+  const parts = quote
+    .split(/\.\.\.|…/)
+    .map(normalizeForMatch)
+    .filter((part) => part.length > 0);
+  return parts.length > 0 && parts.every((part) => normalizedSource.includes(part));
+}
+
+/** Reads the coach's json reply; a reply that isn't json is shown as-is, without sources. */
+function parseCoachReply(text: string): { quotes: string[]; answer: string } {
+  try {
+    const start = text.indexOf("{");
+    const parsed = JSON.parse(start === -1 ? text : text.slice(start, text.lastIndexOf("}") + 1)) as {
+      quotes?: unknown;
+      answer?: unknown;
+    };
+    const answer = typeof parsed.answer === "string" ? parsed.answer.trim() : "";
+    if (!answer) throw new Error("no answer");
+    const quotes = Array.isArray(parsed.quotes)
+      ? parsed.quotes.map((q) => String(q).trim()).filter(Boolean).slice(0, 5)
+      : [];
+    return { quotes, answer };
+  } catch {
+    return { quotes: [], answer: text.trim() };
+  }
+}

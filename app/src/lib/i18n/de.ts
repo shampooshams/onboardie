@@ -200,6 +200,7 @@ export const de: Record<MessageKey, string> = {
     "Fragen Sie alles zu Ihrer Rolle, Ihren Tools oder Ihren ersten Wochen. Die Antworten beruhen auf von Ihrer Führungskraft geprüften Inhalten.",
   "coach.placeholder": "Fragen Sie Ihren KI-Coach …",
   "coach.send": "Nachricht senden",
+  "coach.sources": "Aus Ihrem Dokument ({count})",
   "coach.disclaimer": "Der KI-Coach kann sich irren. Fragen Sie im Zweifel Ihre Führungskraft.",
   // FAQ groups
   "faqcat.tooling": "Tools & Systeme",

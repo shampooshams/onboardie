@@ -24,7 +24,8 @@ export const Route = createFileRoute("/_authenticated/ai-coach")({
 /** Shown only until this role's own Q&A content loads. */
 const FALLBACK_SUGGESTIONS = ["coach.fallback1", "coach.fallback2", "coach.fallback3"] as const;
 
-type Message = { id: string; role: "user" | "coach"; text: string };
+/** `sources` are the verified passages from the company content a coach answer is based on. */
+type Message = { id: string; role: "user" | "coach"; text: string; sources?: string[] };
 
 function AiCoachPage() {
   const { t, lang } = useT();
@@ -61,6 +62,7 @@ function AiCoachPage() {
     setIsTyping(true);
 
     let reply = t("coach.error");
+    let sources: string[] = [];
     try {
       const result = await ask({
         data: {
@@ -73,11 +75,12 @@ function AiCoachPage() {
         },
       });
       reply = result.ok ? result.text : result.message;
+      if (result.ok) sources = result.sources;
     } catch (error) {
       console.error(error);
     }
 
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "coach", text: reply }]);
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "coach", text: reply, sources }]);
     setIsTyping(false);
     inputRef.current?.focus();
   }
@@ -191,8 +194,30 @@ function MessageBubble({ message }: { message: Message }) {
         }
       >
         {isUser ? message.text : <FormattedAnswer text={message.text} />}
+        {!isUser && message.sources && message.sources.length > 0 && (
+          <Sources quotes={message.sources} />
+        )}
       </div>
     </div>
+  );
+}
+
+/** The exact passages from the uploaded content an answer is based on, so it can be checked. */
+function Sources({ quotes }: { quotes: string[] }) {
+  const { t } = useT();
+  return (
+    <details className="mt-3 border-t border-border pt-2 text-xs text-muted-foreground">
+      <summary className="cursor-pointer select-none font-medium">
+        {t("coach.sources", { count: quotes.length })}
+      </summary>
+      <ul className="mt-2 space-y-1.5">
+        {quotes.map((q, i) => (
+          <li key={i} className="border-l-2 border-primary/40 pl-2 italic">
+            „{q}“
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

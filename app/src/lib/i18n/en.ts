@@ -187,6 +187,7 @@ export const en = {
     "Ask anything about your role, tools, or first weeks. Answers are reviewed by your manager.",
   "coach.placeholder": "Ask your AI Coach anything…",
   "coach.send": "Send message",
+  "coach.sources": "From your document ({count})",
   "coach.disclaimer": "The AI Coach can make mistakes. When in doubt, ask your manager.",
   // FAQ groups
   "faqcat.tooling": "Tools & systems",
