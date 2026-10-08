@@ -43,8 +43,12 @@ export const getChatHistory = createServerFn({ method: "GET" })
           id: r.id,
           role: r.role === "user" ? "user" : "coach",
           text: r.role === "user" ? r.text : readableStoredAnswer(r.text),
-          sources: Array.isArray(r.sources) ? r.sources.map(String) : [],
-          // Answers with a web part are saved as { web: … } instead of a list.
+          sources: Array.isArray(r.sources)
+            ? r.sources.map(String)
+            : Array.isArray((r.sources as { quotes?: unknown } | null)?.quotes)
+              ? ((r.sources as { quotes: unknown[] }).quotes).map(String)
+              : [],
+          // Answers with a web part are saved as { web, quotes } instead of a list.
           ...(r.sources && !Array.isArray(r.sources) && typeof r.sources === "object" && "web" in r.sources
             ? { web: (r.sources as { web: CoachWeb }).web }
             : {}),

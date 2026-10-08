@@ -335,6 +335,7 @@ function Diagnostics({ data }: { data: CoachDiagnostics }) {
         <div><dt className="inline font-medium">{t("coach.diagJobTitle")}: </dt><dd className="inline">{data.jobTitle || "—"}</dd></div>
         <div><dt className="inline font-medium">{t("coach.diagDocument")}: </dt><dd className="inline">{data.documentChars.toLocaleString()} {t("coach.diagChars")} ({data.usesOriginalDocument ? t("coach.diagOriginal") : t("coach.diagSummary")}), {t("coach.diagCompanyDocs")}: {data.companyDocsChars.toLocaleString()}</dd></div>
       </dl>
+      {data.phrasing && <p className="mt-2">✍️ {data.phrasing}</p>}
       {data.web && (
         <p className="mt-2">
           🌐 {data.web.searched ? `web search: ${data.web.queries.join(" · ") || "—"} (${data.web.sources} sources)` : `no web search (${data.web.error ?? "—"})`}

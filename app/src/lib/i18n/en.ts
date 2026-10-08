@@ -207,7 +207,7 @@ export const en = {
   "coach.notCovered": "Your onboarding document doesn't cover this. Please ask your manager.",
   "coach.newChat": "New chat",
   "coach.newChatConfirm": "Start a new chat? Your current conversation will be deleted.",
-  "coach.sources": "From your document ({count})",
+  "coach.sources": "Exact wording in your document ({count})",
   "coach.disclaimer": "The AI Coach can make mistakes. When in doubt, ask your manager.",
   // FAQ groups
   "faqcat.tooling": "Tools & systems",
