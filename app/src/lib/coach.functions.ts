@@ -21,12 +21,14 @@ const SYSTEM_PROMPT = `You help a new hire with questions during onboarding. The
 - Never choose paragraphs that only touch the topic (e.g. a skill list or a tool description for a question on how to write an email). Up to 8 paragraphs.
 
 2. "needs_web": whether the app should also look the question up on the internet.
-- true when the documents don't fully answer the question and it can be answered with general, public information: e.g. how to write a good email, prepare for a 1:1 or give feedback, what a common term, law or tool means in general.
-- false when the documents fully answer it, or when it is about this company specifically — its policies, entitlements, numbers, budgets, deadlines, people, internal tools or processes. Those can only come from the documents, never from the internet.
+- true whenever the documents don't fully answer the question — also for questions about this company. (For those, the app says the documents don't cover it and adds general information from the web, clearly marked as general practice, never as this company's rule.)
+- false only when the documents fully answer it, or when it isn't a real question (e.g. "thanks", "hello").
+
+3. "company_specific": true when the question is about this company's own rules, policies, entitlements, people, internal tools or processes (e.g. "can I sleep in the office?", "how many vacation days do I get?"); false for general questions (e.g. how to write a good email, what a common term or law means).
 
 Use the conversation to understand follow-up questions (e.g. "and after that?").
 
-Reply with only this json: {"passages": [{"paragraph": 12, "starts_with": "first words of paragraph 12"}], "needs_web": false}`;
+Reply with only this json: {"passages": [{"paragraph": 12, "starts_with": "first words of paragraph 12"}], "needs_web": false, "company_specific": false}`;
 
 /**
  * Rewords the chosen document paragraphs into a natural reply. The paragraphs
@@ -59,6 +61,16 @@ function keepsFacts(reply: string, passages: string): boolean {
   return reply.length <= passages.length * 2 + 300;
 }
 
+/**
+ * Added to the web prompt for company questions the documents don't answer:
+ * say so honestly first, then general practice from the web, never as the
+ * company's rule.
+ */
+const COMPANY_GAP_PROMPT = `
+This question is about the new hire's own company, and their company's onboarding documents don't answer it (fully).
+- Start with one or two natural sentences in this spirit, in their language: "Your onboarding document doesn't say anything about <topic>. That's really up to your company, so it's best to ask your manager." If they were already shown who is responsible for this topic (below), point them to that person instead of the manager.
+- Then add general guidance from your search — what is common or typical in general (e.g. "In general, …") — clearly as general practice, never as their company's rule, and without guessing what their company does.`;
+
 /** For the web step: a natural, conversational answer grounded in a Google Search. */
 const WEB_PROMPT = `You are a friendly, knowledgeable colleague helping a new hire during their onboarding, chatting with them like a helpful AI assistant would. Always run a Google Search first and base your answer on the pages you find, so the new hire can see where it comes from — even for everyday topics you already know about. Answer their latest question naturally and conversationally.
 - Speak directly to them ("you"), warm and practical, like a person in a chat — no formal headings like "General guidance".
@@ -68,7 +80,7 @@ const WEB_PROMPT = `You are a friendly, knowledgeable colleague helping a new hi
 - Don't put links or a source list in your text; the app lists the web pages you used below your answer.
 - Reply in the language of their latest message. In German, address them formally with "Sie".`;
 
-/** Makes the provider return exactly {"passages": [{paragraph, starts_with}], "needs_web": boolean}. */
+/** Makes the provider return exactly {"passages": [{paragraph, starts_with}], "needs_web": boolean, "company_specific": boolean}. */
 const PARAGRAPHS_SCHEMA = {
   type: "json_schema",
   json_schema: {
@@ -90,8 +102,9 @@ const PARAGRAPHS_SCHEMA = {
           },
         },
         needs_web: { type: "boolean" },
+        company_specific: { type: "boolean" },
       },
-      required: ["passages", "needs_web"],
+      required: ["passages", "needs_web", "company_specific"],
       additionalProperties: false,
     },
   },
@@ -378,7 +391,7 @@ export const askCoach = createServerFn({ method: "POST" })
         {
           role: "system",
           content:
-            'Reply with only the json {"passages": [{"paragraph": 12, "starts_with": "first words"}], "needs_web": false}: the paragraphs that answer the question, and whether to also look it up on the internet.',
+            'Reply with only the json {"passages": [{"paragraph": 12, "starts_with": "first words"}], "needs_web": false, "company_specific": false}: the paragraphs that answer the question, whether to also look it up on the internet, and whether it is about this company specifically.',
         },
       ]);
       if (retry.ok) {
@@ -428,9 +441,10 @@ export const askCoach = createServerFn({ method: "POST" })
       const already = shownPassages.length
         ? `\n\nAlready shown to them from their company's documents:\n${shownPassages.map((p) => `- ${p}`).join("\n")}`
         : "";
+      const webSystem = WEB_PROMPT + (picked.companySpecific ? COMPANY_GAP_PROMPT : "") + already;
       let grounded = await callGroundedSearch({
         feature: "coach_web",
-        system: WEB_PROMPT + already,
+        system: webSystem,
         messages: data.messages,
       });
       // The model decides itself whether to search; without sources, ask once
@@ -438,7 +452,7 @@ export const askCoach = createServerFn({ method: "POST" })
       if (grounded.ok && grounded.sources.length === 0) {
         const retry = await callGroundedSearch({
           feature: "coach_web",
-          system: WEB_PROMPT + already,
+          system: webSystem,
           messages: [
             ...data.messages,
             {
@@ -461,7 +475,7 @@ export const askCoach = createServerFn({ method: "POST" })
       } else {
         const plain = await callChatCompletion({
           feature: "coach_web",
-          messages: [{ role: "system", content: WEB_PROMPT + already }, ...data.messages],
+          messages: [{ role: "system", content: webSystem }, ...data.messages],
         });
         if (plain.ok && plain.text.trim()) {
           blocks.push(plain.text.trim());

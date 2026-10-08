@@ -58,6 +58,8 @@ export type CoachPick = {
   numbers: number[];
   /** The documents don't fully answer it and it's a general, public-knowledge question. */
   needsWeb: boolean;
+  /** The question is about the company's own rules, people or processes. */
+  companySpecific: boolean;
   /** False when the reply contained nothing usable (an explicit empty list counts as usable). */
   found: boolean;
 };
@@ -102,8 +104,14 @@ export function readCoachPick(reply: string, units: string[]): CoachPick {
   const json = /\{[\s\S]*\}/.exec(reply)?.[0];
   if (json) {
     try {
-      const parsed = JSON.parse(json) as { passages?: unknown; paragraphs?: unknown; needs_web?: unknown };
+      const parsed = JSON.parse(json) as {
+        passages?: unknown;
+        paragraphs?: unknown;
+        needs_web?: unknown;
+        company_specific?: unknown;
+      };
       const needsWeb = parsed.needs_web === true;
+      const companySpecific = parsed.company_specific === true;
       if (Array.isArray(parsed.passages)) {
         const numbers = parsed.passages
           .map((p) => {
@@ -111,22 +119,22 @@ export function readCoachPick(reply: string, units: string[]): CoachPick {
             return resolvePick(Number(pick.paragraph), String(pick.starts_with ?? ""), units, normalized);
           })
           .filter((n): n is number => n !== null);
-        return { numbers: unique(numbers), needsWeb, found: true };
+        return { numbers: unique(numbers), needsWeb, companySpecific, found: true };
       }
       if (Array.isArray(parsed.paragraphs)) {
-        return { numbers: unique(parsed.paragraphs.map(Number)), needsWeb, found: true };
+        return { numbers: unique(parsed.paragraphs.map(Number)), needsWeb, companySpecific, found: true };
       }
     } catch {
       // fall through to plain-text forms
     }
   }
   const bracketed = [...reply.matchAll(/\[(\d{1,5})\]/g)].map((m) => Number(m[1]));
-  if (bracketed.length > 0) return { numbers: unique(bracketed), needsWeb: false, found: true };
+  if (bracketed.length > 0) return { numbers: unique(bracketed), needsWeb: false, companySpecific: false, found: true };
   const listed = /paragraphs?\s*:\s*([\d,\s]*)/i.exec(reply);
   if (listed) {
-    return { numbers: unique((listed[1].match(/\d+/g) ?? []).map(Number)), needsWeb: false, found: true };
+    return { numbers: unique((listed[1].match(/\d+/g) ?? []).map(Number)), needsWeb: false, companySpecific: false, found: true };
   }
-  return { numbers: [], needsWeb: false, found: false };
+  return { numbers: [], needsWeb: false, companySpecific: false, found: false };
 }
 
 /**
