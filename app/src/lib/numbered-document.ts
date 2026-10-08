@@ -60,6 +60,8 @@ export type CoachPick = {
   needsWeb: boolean;
   /** The question is about the company's own rules, people or processes. */
   companySpecific: boolean;
+  /** A greeting, thanks or chit-chat rather than a question. */
+  smallTalk: boolean;
   /** False when the reply contained nothing usable (an explicit empty list counts as usable). */
   found: boolean;
 };
@@ -109,9 +111,11 @@ export function readCoachPick(reply: string, units: string[]): CoachPick {
         paragraphs?: unknown;
         needs_web?: unknown;
         company_specific?: unknown;
+        small_talk?: unknown;
       };
       const needsWeb = parsed.needs_web === true;
       const companySpecific = parsed.company_specific === true;
+      const smallTalk = parsed.small_talk === true;
       if (Array.isArray(parsed.passages)) {
         const numbers = parsed.passages
           .map((p) => {
@@ -119,22 +123,22 @@ export function readCoachPick(reply: string, units: string[]): CoachPick {
             return resolvePick(Number(pick.paragraph), String(pick.starts_with ?? ""), units, normalized);
           })
           .filter((n): n is number => n !== null);
-        return { numbers: unique(numbers), needsWeb, companySpecific, found: true };
+        return { numbers: unique(numbers), needsWeb, companySpecific, smallTalk, found: true };
       }
       if (Array.isArray(parsed.paragraphs)) {
-        return { numbers: unique(parsed.paragraphs.map(Number)), needsWeb, companySpecific, found: true };
+        return { numbers: unique(parsed.paragraphs.map(Number)), needsWeb, companySpecific, smallTalk, found: true };
       }
     } catch {
       // fall through to plain-text forms
     }
   }
   const bracketed = [...reply.matchAll(/\[(\d{1,5})\]/g)].map((m) => Number(m[1]));
-  if (bracketed.length > 0) return { numbers: unique(bracketed), needsWeb: false, companySpecific: false, found: true };
+  if (bracketed.length > 0) return { numbers: unique(bracketed), needsWeb: false, companySpecific: false, smallTalk: false, found: true };
   const listed = /paragraphs?\s*:\s*([\d,\s]*)/i.exec(reply);
   if (listed) {
-    return { numbers: unique((listed[1].match(/\d+/g) ?? []).map(Number)), needsWeb: false, companySpecific: false, found: true };
+    return { numbers: unique((listed[1].match(/\d+/g) ?? []).map(Number)), needsWeb: false, companySpecific: false, smallTalk: false, found: true };
   }
-  return { numbers: [], needsWeb: false, companySpecific: false, found: false };
+  return { numbers: [], needsWeb: false, companySpecific: false, smallTalk: false, found: false };
 }
 
 /**

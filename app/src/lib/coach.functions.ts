@@ -26,9 +26,11 @@ const SYSTEM_PROMPT = `You help a new hire with questions during onboarding. The
 
 3. "company_specific": true when the question is about this company's own rules, policies, entitlements, people, internal tools or processes (e.g. "can I sleep in the office?", "how many vacation days do I get?"); false for general questions (e.g. how to write a good email, what a common term or law means).
 
+4. "small_talk": true only for greetings, thanks and chit-chat that isn't a question (e.g. "hello", "thanks!", "good morning"); false for every real question.
+
 Use the conversation to understand follow-up questions (e.g. "and after that?").
 
-Reply with only this json: {"passages": [{"paragraph": 12, "starts_with": "first words of paragraph 12"}], "needs_web": false, "company_specific": false}`;
+Reply with only this json: {"passages": [{"paragraph": 12, "starts_with": "first words of paragraph 12"}], "needs_web": false, "company_specific": false, "small_talk": false}`;
 
 /**
  * Rewords the chosen document paragraphs into a natural reply. The paragraphs
@@ -71,6 +73,9 @@ This question is about the new hire's own company, and their company's onboardin
 - Start with one or two natural sentences in this spirit, in their language: "Your onboarding document doesn't say anything about <topic>. That's really up to your company, so it's best to ask your manager." If they were already shown who is responsible for this topic (below), point them to that person instead of the manager.
 - Then add general guidance from your search — what is common or typical in general (e.g. "In general, …") — clearly as general practice, never as their company's rule, and without guessing what their company does.`;
 
+/** For greetings and thanks: a short, friendly reply, nothing looked up. */
+const SMALL_TALK_PROMPT = `You are a friendly onboarding coach chatting with a new hire. Reply to their latest message in one or two short, warm sentences, and invite them to ask anything about their role, their first weeks or their onboarding. Reply in the language of their message. In German, address them formally with "Sie".`;
+
 /** For the web step: a natural, conversational answer grounded in a Google Search. */
 const WEB_PROMPT = `You are a friendly, knowledgeable colleague helping a new hire during their onboarding, chatting with them like a helpful AI assistant would. Always run a Google Search first and base your answer on the pages you find, so the new hire can see where it comes from — even for everyday topics you already know about. Answer their latest question naturally and conversationally.
 - Speak directly to them ("you"), warm and practical, like a person in a chat — no formal headings like "General guidance".
@@ -103,8 +108,9 @@ const PARAGRAPHS_SCHEMA = {
         },
         needs_web: { type: "boolean" },
         company_specific: { type: "boolean" },
+        small_talk: { type: "boolean" },
       },
-      required: ["passages", "needs_web", "company_specific"],
+      required: ["passages", "needs_web", "company_specific", "small_talk"],
       additionalProperties: false,
     },
   },
@@ -127,6 +133,8 @@ export type CoachDiagnostics = {
   attempts: { reply: string; quotes: { text: string; found: boolean }[] }[];
   web?: { searched: boolean; queries: string[]; sources: number; error?: string };
   phrasing?: string;
+  /** What the model decided in step 1, and what the app did with it. */
+  decision?: string;
 };
 
 /** The web part of an answer: the pages it used, and Google's required Search Suggestions. */
@@ -437,11 +445,31 @@ export const askCoach = createServerFn({ method: "POST" })
     // (another AI provider, or the search failing) it's answered from general
     // knowledge and marked as such.
     let web: CoachWeb | undefined;
-    if (picked.needsWeb) {
+    // The document didn't answer (no paragraphs) → always continue, so the hire
+    // never just gets "not covered": small talk gets a friendly reply, every
+    // real question goes to the web step. With paragraphs, the model's
+    // needs_web decides whether the web adds to them.
+    const noDocumentAnswer = picked.numbers.length === 0;
+    const smallTalk = noDocumentAnswer && picked.smallTalk;
+    const runWeb = !smallTalk && (picked.needsWeb || noDocumentAnswer);
+    diagnostics.decision = `needs_web=${picked.needsWeb} company_specific=${picked.companySpecific} small_talk=${picked.smallTalk} paragraphs=${picked.numbers.length} → ${smallTalk ? "small talk" : runWeb ? "web step" : "document only"}`;
+
+    if (smallTalk) {
+      const chat = await callChatCompletion({
+        feature: "coach_small_talk",
+        messages: [{ role: "system", content: SMALL_TALK_PROMPT }, ...data.messages],
+      });
+      blocks.push(chat.ok && chat.text.trim() ? chat.text.trim() : translate(data.lang, "coach.hello"));
+    }
+
+    if (runWeb) {
       const already = shownPassages.length
         ? `\n\nAlready shown to them from their company's documents:\n${shownPassages.map((p) => `- ${p}`).join("\n")}`
         : "";
-      const webSystem = WEB_PROMPT + (picked.companySpecific ? COMPANY_GAP_PROMPT : "") + already;
+      // A question the model kept away from the web but the documents don't answer
+      // is almost always about the company, so it gets the honest opening too.
+      const companyGap = picked.companySpecific || (noDocumentAnswer && !picked.needsWeb);
+      const webSystem = WEB_PROMPT + (companyGap ? COMPANY_GAP_PROMPT : "") + already;
       let grounded = await callGroundedSearch({
         feature: "coach_web",
         system: webSystem,
