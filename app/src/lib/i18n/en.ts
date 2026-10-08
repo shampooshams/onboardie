@@ -176,7 +176,7 @@ export const en = {
   "ai.badFormat":
     "The AI's response came back in an unexpected format — please try again, or split the content into smaller sections.",
   // AI Coach page
-  "coach.verified": "Verified by your manager",
+  "coach.verified": "Every answer shows its source",
   "coach.fallback1": "What does success look like in my first 90 days?",
   "coach.fallback2": "Which tools do I need access to?",
   "coach.fallback3": "Who should I contact when I'm stuck?",
@@ -187,6 +187,9 @@ export const en = {
     "Ask anything about your role, tools, or first weeks. Answers are reviewed by your manager.",
   "coach.placeholder": "Ask your AI Coach anything…",
   "coach.send": "Send message",
+  "coach.fromRoleDoc": "From your onboarding document ({role}):",
+  "coach.fromCompanyDoc": "From the company-wide document “{doc}”:",
+  "coach.generalGuidance": "General guidance — not from your company's documents:",
   "coach.noDocument": "No onboarding document is published for your role (“{role}”) yet, so I can’t answer from it. Please ask your manager to upload it, or check your job title in Settings.",
   "coach.diagnostics": "Diagnostics (only managers see this)",
   "coach.diagRole": "Role document used",
