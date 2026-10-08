@@ -46,21 +46,26 @@ async function extractPdf(file: File) {
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const textContent = await page.getTextContent();
-    // Keep paragraphs on their own lines: pdf.js marks a paragraph's end with an
-    // empty item that ends a line, while ordinary line wraps inside a paragraph
-    // are joined with a space.
-    pages.push(
-      textContent.items
-        .map((item: any) => {
-          if (!("str" in item)) return "";
-          if (item.hasEOL) return item.str.trim() === "" ? `${item.str}\n` : `${item.str} `;
-          return `${item.str} `;
-        })
-        .join("")
-        .replace(/[ \t]+\n/g, "\n")
-        .replace(/[ \t]{2,}/g, " ")
-        .trim(),
-    );
+    // One paragraph, bullet or table row per line. pdf.js marks the end of every
+    // visual line; a line break becomes a new line when the line ends a sentence
+    // or the next line starts like a new item (capital letter, number, bullet),
+    // while a sentence that merely wraps is joined with a space.
+    const items = textContent.items.filter((item: any) => "str" in item);
+    let text = "";
+    items.forEach((item: any, index: number) => {
+      if (!item.hasEOL) {
+        text += `${item.str} `;
+        return;
+      }
+      if (item.str.trim() === "") {
+        text += `${item.str}\n`;
+        return;
+      }
+      const next = items.slice(index + 1).find((it: any) => it.str.trim() !== "")?.str.trim() ?? "";
+      const newLine = /[.!?:]$/.test(item.str.trim()) || /^[\p{Lu}\p{N}•▪◦\-–[(„"]/u.test(next);
+      text += newLine ? `${item.str}\n` : `${item.str} `;
+    });
+    pages.push(text.replace(/[ \t]+\n/g, "\n").replace(/[ \t]{2,}/g, " ").trim());
   }
   return pages.join("\n\n");
 }

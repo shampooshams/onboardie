@@ -35,7 +35,12 @@ export function numberDocuments(docs: { title: string; text: string }[]): Number
   for (const [docIndex, doc] of docs.entries()) {
     if (!doc.text.trim()) continue;
     const lines: string[] = [];
-    for (const raw of doc.text.split("\n")) {
+    // PDFs uploaded before paragraphs were kept are stored as one line per page;
+    // there, two or more spaces mark where a paragraph ended, so split on those.
+    const rawLines = doc.text
+      .split("\n")
+      .flatMap((line) => (line.length > MAX_UNIT_CHARS ? line.split(/[ \t]{2,}/) : [line]));
+    for (const raw of rawLines) {
       const line = raw.replace(/\s+/g, " ").trim();
       if (!line) continue;
       for (const unit of line.length > MAX_UNIT_CHARS ? sentences(line) : [line]) {
@@ -57,21 +62,58 @@ export type CoachPick = {
   found: boolean;
 };
 
+/** Lowercase letters and digits only, single-spaced — for comparing opening words. */
+function normalize(text: string): string {
+  return text
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
 /**
- * Reads the model's reply: {"paragraphs": [..], "general": "…"} json, or, from a
+ * The paragraph the model meant: its number when the paragraph really starts
+ * with (or contains) the words the model copied, otherwise the paragraph that
+ * does. Models sometimes get the number slightly wrong; the words catch that.
+ * Returns null when neither matches, so nothing unrelated is ever shown.
+ */
+function resolvePick(n: number, startsWith: string, units: string[], normalized: string[]): number | null {
+  const words = normalize(startsWith).split(" ").filter(Boolean).slice(0, 8).join(" ");
+  if (!words) return n >= 1 && n <= units.length ? n : null;
+  const fits = (i: number) => normalized[i].startsWith(words) || normalized[i].includes(words);
+  if (n >= 1 && n <= units.length && fits(n - 1)) return n;
+  const starts = normalized.findIndex((u) => u.startsWith(words));
+  if (starts !== -1) return starts + 1;
+  const contains = normalized.findIndex((u) => u.includes(words));
+  return contains !== -1 ? contains + 1 : null;
+}
+
+/**
+ * Reads the model's reply: {"passages": [{"paragraph": 12, "starts_with": "…"}],
+ * "general": "…"} json (older {"paragraphs": [12]} also accepted), or, from a
  * provider without structured output, "[12]" / "PARAGRAPHS: 12, 13" in plain text
  * (general advice is only taken from json, where it is clearly separated).
  */
-export function readCoachPick(reply: string, unitCount: number): CoachPick {
-  const inRange = (n: number) => Number.isInteger(n) && n >= 1 && n <= unitCount;
+export function readCoachPick(reply: string, units: string[]): CoachPick {
+  const normalized = units.map(normalize);
+  const inRange = (n: number) => Number.isInteger(n) && n >= 1 && n <= units.length;
   const unique = (ns: number[]) => [...new Set(ns.filter(inRange))].sort((a, b) => a - b).slice(0, 8);
 
   const json = /\{[\s\S]*\}/.exec(reply)?.[0];
   if (json) {
     try {
-      const parsed = JSON.parse(json) as { paragraphs?: unknown; general?: unknown };
+      const parsed = JSON.parse(json) as { passages?: unknown; paragraphs?: unknown; general?: unknown };
+      const general = typeof parsed.general === "string" ? parsed.general.trim().slice(0, 2000) : "";
+      if (Array.isArray(parsed.passages)) {
+        const numbers = parsed.passages
+          .map((p) => {
+            const pick = (p ?? {}) as { paragraph?: unknown; starts_with?: unknown };
+            return resolvePick(Number(pick.paragraph), String(pick.starts_with ?? ""), units, normalized);
+          })
+          .filter((n): n is number => n !== null);
+        return { numbers: unique(numbers), general, found: true };
+      }
       if (Array.isArray(parsed.paragraphs)) {
-        const general = typeof parsed.general === "string" ? parsed.general.trim().slice(0, 2000) : "";
         return { numbers: unique(parsed.paragraphs.map(Number)), general, found: true };
       }
     } catch {
