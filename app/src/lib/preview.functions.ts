@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import type { LiveContentResult } from "./live-content.functions";
+import { inReaderLanguage, type LiveContentResult } from "./live-content.functions";
+import { langFrom, type Lang } from "./i18n/translate";
 import type { Sections } from "./notion-publish.server";
 
 const KEYS = ["overview", "plan", "faq", "tools", "contacts", "facts"] as const;
@@ -14,11 +15,11 @@ function normalize(raw: Record<string, unknown>): Sections {
   return sections;
 }
 
-function validate(input: unknown): { roleContentId: string } {
-  const data = input as { roleContentId?: unknown };
+function validate(input: unknown): { roleContentId: string; lang: Lang } {
+  const data = input as { roleContentId?: unknown; lang?: unknown };
   if (typeof data?.roleContentId !== "string" || !data.roleContentId.trim())
     throw new Error("roleContentId is required");
-  return { roleContentId: data.roleContentId.trim() };
+  return { roleContentId: data.roleContentId.trim(), lang: langFrom(data.lang) };
 }
 
 /**
@@ -44,13 +45,13 @@ export const getPreviewContent = createServerFn({ method: "POST" })
       if (error) throw error;
       if (!row) return { ok: true, role: null, sections: null, updatedAt: null, isMockup: false };
 
-      return {
-        ok: true,
-        role: row.role,
-        sections: normalize((row.sections ?? {}) as Record<string, unknown>),
-        updatedAt: row.updated_at,
-        isMockup: false,
-      };
+      const localized = await inReaderLanguage(
+        context.supabase,
+        data.roleContentId,
+        normalize((row.sections ?? {}) as Record<string, unknown>),
+        data.lang,
+      );
+      return { ok: true, role: row.role, ...localized, updatedAt: row.updated_at, isMockup: false };
     } catch (error) {
       console.error("Reading preview role content failed", error);
       return { ok: false, error: "notion" };

@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Sections } from "./notion-publish.server";
 import { findRoleFor } from "./role-match";
+import { langFrom, type Lang } from "./i18n/translate";
 
 export type LiveContentResult =
   | {
@@ -10,6 +11,11 @@ export type LiveContentResult =
       sections: Sections | null;
       updatedAt: string | null;
       isMockup: boolean;
+      /**
+       * The original plan lines when `sections` is a translation. Ticked tasks are
+       * saved under the original wording, so progress survives a language switch.
+       */
+      originalPlan?: string[];
     }
   | { ok: false; error: "notion" };
 
@@ -25,12 +31,36 @@ function normalize(raw: Record<string, unknown>): Sections {
 }
 
 /**
+ * The content in the reader's language: translated (and saved) by the AI, or
+ * the original when no translation is possible. Shared with the preview.
+ */
+export async function inReaderLanguage(
+  supabase: Parameters<typeof import("./content-translation.server").translatedSections>[0],
+  roleContentId: string,
+  sections: Sections,
+  lang: Lang,
+): Promise<{ sections: Sections; originalPlan?: string[] }> {
+  try {
+    const { translatedSections } = await import("./content-translation.server");
+    const source = { ...sections, facts: sections.facts ?? [] };
+    const result = await translatedSections(supabase, roleContentId, source, lang);
+    return result.translated
+      ? { sections: result.sections, originalPlan: source.plan }
+      : { sections };
+  } catch (error) {
+    console.error("Translating role content failed", error);
+    return { sections };
+  }
+}
+
+/**
  * Reads the role content this user should see: their own company's most recent role,
  * falling back to the shared mockup role so demos still work.
  */
 export const getLiveContent = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<LiveContentResult> => {
+  .inputValidator((input: unknown) => ({ lang: langFrom((input as { lang?: unknown } | null)?.lang) }))
+  .handler(async ({ data: input, context }): Promise<LiveContentResult> => {
     try {
       const { companyIdFor } = await import("./company.server");
       const companyId = await companyIdFor(context.supabase, context.userId);
@@ -47,7 +77,7 @@ export const getLiveContent = createServerFn({ method: "GET" })
       if (companyId) {
         const { data, error } = await context.supabase
           .from("role_content")
-          .select("role, sections, updated_at")
+          .select("id, role, sections, updated_at")
           .eq("company_id", companyId)
           .order("updated_at", { ascending: false });
         if (error) throw error;
@@ -58,10 +88,16 @@ export const getLiveContent = createServerFn({ method: "GET" })
           ? findRoleFor(rows, roleTitle, (r) => r.role)
           : rows[0];
         if (match) {
+          const localized = await inReaderLanguage(
+            context.supabase,
+            match.id,
+            normalize((match.sections ?? {}) as Record<string, unknown>),
+            input.lang,
+          );
           return {
             ok: true,
             role: match.role,
-            sections: normalize((match.sections ?? {}) as Record<string, unknown>),
+            ...localized,
             updatedAt: match.updated_at,
             isMockup: false,
           };
