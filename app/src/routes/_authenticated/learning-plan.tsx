@@ -51,7 +51,7 @@ function LearningPlanPage() {
     setDone((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
   }
 
-  const allTasks = phases.flatMap((p) => p.tasks.map((task) => `${p.title}::${task}`));
+  const allTasks = phases.flatMap((p) => p.tasks.map((task) => live.taskKey(p.title, task)));
   const doneCount = allTasks.filter((k) => done.includes(k)).length;
   const pct = allTasks.length ? Math.round((doneCount / allTasks.length) * 100) : 0;
 
@@ -86,7 +86,7 @@ function LearningPlanPage() {
 
           <div className="space-y-6">
             {phases.map((phase) => {
-              const keys = phase.tasks.map((task) => `${phase.title}::${task}`);
+              const keys = phase.tasks.map((task) => live.taskKey(phase.title, task));
               const phaseDone = keys.filter((k) => done.includes(k)).length;
               return (
                 <section

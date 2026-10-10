@@ -115,7 +115,7 @@ function Dashboard() {
 
   const { accomplished, next } = useMemo(() => {
     const tasks = groupPlan(live.lines("plan")).flatMap((p) =>
-      p.tasks.map((task) => ({ key: `${p.title}::${task}`, phase: p.title, task })),
+      p.tasks.map((task) => ({ key: live.taskKey(p.title, task), phase: p.title, task })),
     );
     return {
       accomplished: tasks.filter((t) => done.includes(t.key)).slice(-4),

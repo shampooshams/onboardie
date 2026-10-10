@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getLiveContent, type LiveContentResult } from "./live-content.functions";
@@ -5,6 +6,7 @@ import { getPreviewContent } from "./preview.functions";
 import { usePreviewRole } from "./preview";
 import { useProfile } from "./profile";
 import type { MessageKey } from "./i18n/translate";
+import { useT } from "./i18n";
 
 export const NOT_PROVIDED = "Not provided — add manually";
 
@@ -30,10 +32,14 @@ export function useLiveContent() {
   // Real new hires never have this set, so their resolution is untouched.
   const { preview } = usePreviewRole();
   const previewId = preview?.id ?? null;
+  // Content is shown in the reader's language (translated once on the server and saved).
+  const { lang } = useT();
   const query = useQuery<LiveContentResult>({
-    queryKey: previewId ? ["preview-content", previewId] : ["live-content", roleTitle],
+    queryKey: previewId ? ["preview-content", previewId, lang] : ["live-content", roleTitle, lang],
     queryFn: () =>
-      previewId ? fetchPreview({ data: { roleContentId: previewId } }) : fetchLive(),
+      previewId
+        ? fetchPreview({ data: { roleContentId: previewId, lang } })
+        : fetchLive({ data: { lang } }),
     staleTime: previewId ? 0 : 60_000,
     enabled: previewId ? true : !profileLoading,
   });
@@ -42,6 +48,23 @@ export function useLiveContent() {
   const ok = data?.ok === true;
   const sections: LiveSections | null =
     ok && data.sections ? (data.sections as LiveSections) : null;
+  const originalPlan = ok ? data.originalPlan : undefined;
+
+  // Ticked learning-plan tasks are saved under the original wording, so a
+  // translated plan maps each shown task back to its original key.
+  const taskKeys = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!sections || !originalPlan) return map;
+    const shown = groupPlan(clean(sections.plan));
+    const original = groupPlan(clean(originalPlan));
+    shown.forEach((phase, i) => {
+      phase.tasks.forEach((task, j) => {
+        const source = original[i]?.tasks[j];
+        if (source !== undefined) map.set(`${phase.title}::${task}`, `${original[i].title}::${source}`);
+      });
+    });
+    return map;
+  }, [sections, originalPlan]);
 
   return {
     isLoading: (previewId ? false : profileLoading) || query.isLoading,
@@ -52,6 +75,9 @@ export function useLiveContent() {
     updatedAt: ok ? data.updatedAt : null,
     sections,
     lines: (key: keyof LiveSections) => clean(sections?.[key]),
+    /** The key a learning-plan task's tick is saved under (stable across languages). */
+    taskKey: (phaseTitle: string, task: string) =>
+      taskKeys.get(`${phaseTitle}::${task}`) ?? `${phaseTitle}::${task}`,
   };
 }
 
