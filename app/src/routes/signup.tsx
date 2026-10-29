@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
+import { Lock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { LanguageSwitch } from "@/components/language-switch";
 import { useT } from "@/lib/i18n";
@@ -244,9 +245,14 @@ function SignupPage() {
               required
               minLength={6}
               autoComplete="new-password"
+              aria-describedby="password-note"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
+            <p id="password-note" className="flex gap-1.5 text-xs text-muted-foreground">
+              <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>{t("auth.passwordNote")}</span>
+            </p>
           </div>
           {error && (
             <p role="alert" className="text-sm text-destructive">

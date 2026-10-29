@@ -28,6 +28,8 @@ export const de: Record<MessageKey, string> = {
   // Auth
   "auth.email": "E-Mail",
   "auth.password": "Passwort",
+  "auth.passwordNote":
+    "Ihr Passwort wird verschlüsselt übertragen und nur als unlesbarer Hash gespeichert – niemand, auch nicht das Onboardie-Team, kann es sehen. Wir fragen Sie nie danach. Tipp: Verwenden Sie ein Passwort, das Sie nirgendwo sonst nutzen.",
   "auth.subtitle": "Zugang zu Ihrem Onboarding-Coach und Ihren Rolleninhalten.",
   "auth.loginTitle": "Bei Onboardie anmelden",
   "auth.loginButton": "Anmelden",

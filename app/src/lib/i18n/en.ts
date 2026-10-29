@@ -24,6 +24,8 @@ export const en = {
   // Auth
   "auth.email": "Email",
   "auth.password": "Password",
+  "auth.passwordNote":
+    "Your password is sent encrypted and stored only as an unreadable hash — no one, not even the Onboardie team, can see it. We'll never ask for it. Tip: use one you don't use anywhere else.",
   "auth.subtitle": "Access your onboarding coach and role content.",
   "auth.loginTitle": "Log in to Onboardie",
   "auth.loginButton": "Log in",
